@@ -93,20 +93,44 @@ GET /api/v1/produits/?q=samsung+galaxy&page=1
 }
 ```
 
-> **Note :** `slug` est `null` pour les résultats per-store. Seuls les produits de la collection `comparatif` ont un slug.
+> **Note :** `slug` est `null` pour les résultats per-store. Le frontend utilise `id` (ObjectId) comme identifiant de navigation dans ce cas.
 
 ---
 
-## `GET /produits/<slug>/`
+## `GET /produits/<id>/`
 
-Détail d'un produit depuis la collection `comparatif` (slug requis, `Matching: "Exact Match"`).
+Accepte deux types d'identifiants :
+- **ObjectId MongoDB** (24 hex) → cherche dans les 3 per-store collections
+- **Slug texte** → cherche dans `comparatif`
 
-**Exemple :**
+**Exemples :**
 ```
+GET /api/v1/produits/68a45751dc1cf04413890156/
 GET /api/v1/produits/samsung-galaxy-s24/
 ```
 
-**Réponse :**
+**Réponse (ObjectId — 1 boutique) :**
+```json
+{
+  "id": "68a45751dc1cf04413890156",
+  "slug": "68a45751dc1cf04413890156",
+  "nom": "Chargeur Hama pour iPhone",
+  "marque": "Hama",
+  "categorie": "chargeurs-et-cables-pour-telephones",
+  "reference": "89434",
+  "image": "https://www.tunisianet.com.tn/...",
+  "prix_min": 5.9,
+  "prix_max": 5.9,
+  "en_stock": true,
+  "boutique": "Tunisianet",
+  "url_boutique": "https://www.tunisianet.com.tn/...",
+  "offres": [
+    { "boutique": "Tunisianet", "prix": 5.9, "stock": "En stock", "url": "...", "image": "..." }
+  ]
+}
+```
+
+**Réponse (Slug — comparatif, multi-boutiques) :**
 ```json
 {
   "id": "665abc123...",
@@ -118,20 +142,8 @@ GET /api/v1/produits/samsung-galaxy-s24/
   "prix_min": 2799.0,
   "prix_max": 2849.0,
   "offres": [
-    {
-      "boutique": "Mytek",
-      "prix": 2799.0,
-      "stock": "En stock",
-      "url": "https://www.mytek.tn/...",
-      "image": "https://..."
-    },
-    {
-      "boutique": "Tunisianet",
-      "prix": 2849.0,
-      "stock": "En stock",
-      "url": "https://www.tunisianet.com.tn/...",
-      "image": "https://..."
-    }
+    { "boutique": "Mytek",      "prix": 2799.0, "stock": "En stock", "url": "...", "image": "..." },
+    { "boutique": "Tunisianet", "prix": 2849.0, "stock": "En stock", "url": "...", "image": "..." }
   ]
 }
 ```
