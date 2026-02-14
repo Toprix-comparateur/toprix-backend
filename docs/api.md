@@ -1,6 +1,6 @@
 # Référence API — Toprix Backend
 
-Base URL : `https://api.toprix.net/api/v1`
+Base URL : `https://api.toprix.tn/api/v1`
 
 ---
 
@@ -32,7 +32,7 @@ Base URL : `https://api.toprix.net/api/v1`
     "page": 1,
     "total_pages": 5,
     "total_items": 48,
-    "par_page": 12
+    "par_page": 20
   }
 }
 ```
@@ -53,14 +53,29 @@ Recherche de produits dans les 3 collections MongoDB (Tunisianet, Mytek, Spacene
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `q` | string | Terme de recherche (regex sur `title`) |
-| `categorie` | string | Filtrer par slug catégorie |
-| `marque` | string | Filtrer par nom de marque |
-| `page` | int | Numéro de page (défaut : 1) |
+| `q` | string | Terme de recherche (Atlas Search ou regex selon mode) |
+| `categorie` | string | Filtrer par slug catégorie (regex, case-insensitive) |
+| `marque` | string | Filtrer par nom de marque (regex, case-insensitive) |
+| `page` | int | Numéro de page (défaut : 1, max : 100) |
+
+**Logique de recherche :**
+
+| Cas | Moteur | Détail |
+|-----|--------|--------|
+| `q` seul (texte libre) | **Atlas Search** | compound : phrase (x10) + texte (x5) + fuzzy (x2), tri par `starts_with` puis `search_score` |
+| `q` seul (référence détectée) | **Pipeline référence** | match exact sur `reference`, `exact_match` score, tri prix ASC |
+| `q` + `categorie`/`marque` | Regex MongoDB | `$regex` sur `title`, `category`, `brand` |
+| `categorie`/`marque` sans `q` | Regex MongoDB | `$regex` sur `category`/`brand` uniquement |
+
+> Une **référence** est un token sans espace contenant des chiffres ou tirets (ex : `SM-S921B`, `12000BTU`).
+> Fallback automatique sur regex si l'index Atlas Search `"Text"` est indisponible.
+
+**Pagination** : 20 produits par page (`PAGE_SIZE = 20`). Dédoublonnage par référence (meilleur prix conservé).
 
 **Exemple :**
 ```
 GET /api/v1/produits/?q=samsung+galaxy&page=1
+GET /api/v1/produits/?q=laptop&categorie=ordinateurs-portables&marque=hp
 ```
 
 **Réponse :**
@@ -88,7 +103,7 @@ GET /api/v1/produits/?q=samsung+galaxy&page=1
     "page": 1,
     "total_pages": 3,
     "total_items": 32,
-    "par_page": 12
+    "par_page": 20
   }
 }
 ```
@@ -202,7 +217,7 @@ GET /api/v1/categories/smartphones/?page=2
     "page": 2,
     "total_pages": 8,
     "total_items": 96,
-    "par_page": 12
+    "par_page": 20
   }
 }
 ```
