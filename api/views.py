@@ -44,7 +44,7 @@ logger = logging.getLogger('api')
 # ============================================
 # CONSTANTES
 # ============================================
-PAGE_SIZE = 12
+PAGE_SIZE = 20
 MAX_PAGE = 100
 
 # Champs à projeter dans les per-store collections
