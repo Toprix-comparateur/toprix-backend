@@ -339,6 +339,8 @@ def produit_detail(request, slug: str):
                 doc = get_col().find_one({'_id': oid})
                 if doc:
                     prix = safe_price(doc.get('price'))
+                    old_prix = safe_price(doc.get('old_price'))
+                    discount = safe_price(doc.get('discount')) or 0
                     offre = {
                         'boutique': store_name,
                         'prix': prix,
@@ -352,10 +354,13 @@ def produit_detail(request, slug: str):
                         'nom': doc.get('title', ''),
                         'marque': (doc.get('brand') or '').title(),
                         'categorie': doc.get('category', ''),
+                        'categorie_nom': doc.get('category_path', ''),
                         'reference': doc.get('reference', ''),
                         'image': doc.get('product_image', ''),
+                        'description': doc.get('fiche_technique', ''),
                         'prix_min': prix,
-                        'prix_max': safe_price(doc.get('old_price')) or prix,
+                        'prix_max': old_prix if old_prix and old_prix != prix else None,
+                        'discount': discount,
                         'en_stock': doc.get('etat_stock') == 'En stock',
                         'boutique': store_name,
                         'url_boutique': doc.get('url', ''),
