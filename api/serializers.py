@@ -56,7 +56,7 @@ class BlogPostListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BlogPost
-        fields = ['id', 'slug', 'titre', 'image', 'date_publication', 'resume']
+        fields = ['id', 'slug', 'title', 'image', 'published_date', 'resume']
 
     # Renommage des champs pour correspondre aux types TypeScript du frontend
     def to_representation(self, instance):
