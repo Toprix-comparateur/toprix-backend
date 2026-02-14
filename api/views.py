@@ -25,6 +25,14 @@ from rest_framework import status
 
 from db.mongo import get_comparatif, get_all_stores
 from .models import BlogPost, BlogSummary, BlogSpecifications, BlogSection, StoreRequest
+from .helpers.search import (
+    clean_search_query,
+    is_reference_query,
+    build_reference_pipeline,
+    build_text_search_pipeline,
+    filter_by_relevance,
+    filter_exact_matches,
+)
 from .serializers import (
     BlogPostListSerializer,
     BlogPostDetailSerializer,
@@ -182,6 +190,12 @@ def produits_list(request):
     """
     GET /api/v1/produits/
     Params: q, page, categorie, marque
+
+    Logique de recherche :
+    - q seul  → Atlas Search (phrase/fuzzy) si index "Text" disponible, sinon fallback regex
+    - q + référence détectée → pipeline exact reference match
+    - categorie / marque → regex classique sur les champs MongoDB
+    - Post-filtrage par pertinence pour queries multi-mots
     """
     q = request.GET.get('q', '').strip()
     categorie = request.GET.get('categorie', '').strip()
@@ -191,29 +205,80 @@ def produits_list(request):
     if not q and not categorie and not marque:
         return Response({'data': [], 'meta': {'page': 1, 'total_pages': 0, 'total_items': 0, 'par_page': PAGE_SIZE}})
 
-    produits = []
+    # Nettoyage de la requête textuelle
+    if q:
+        q = clean_search_query(q)
+        if not q:
+            return Response({'data': [], 'meta': {'page': 1, 'total_pages': 0, 'total_items': 0, 'par_page': PAGE_SIZE}})
 
-    for get_col, store_name in get_all_stores():
-        try:
-            col = get_col()
-            query = {}
+    raw_docs = []  # docs bruts MongoDB, chacun avec '_source' = store_name
 
-            if q:
-                query['title'] = {'$regex': re.escape(q), '$options': 'i'}
-            if categorie:
-                query['category'] = {'$regex': re.escape(categorie), '$options': 'i'}
-            if marque:
-                query['brand'] = {'$regex': re.escape(marque), '$options': 'i'}
+    if q and not categorie and not marque:
+        # ── Recherche textuelle pure : Atlas Search ──────────────────────────
+        is_reference = is_reference_query(q)
+        query_words = q.split()
+        num_words = len(query_words)
+        fetch_limit = PAGE_SIZE * 3  # marge pour la déduplication
 
-            results = col.find(query, PRODUIT_PROJECTION).limit(PAGE_SIZE * 2)
-            for doc in results:
-                produits.append(format_produit_from_store(doc, store_name))
+        if is_reference:
+            logger.info(f"Recherche référence : {q}")
+            pipeline = build_reference_pipeline(q, skip=0, limit=fetch_limit)
+        else:
+            logger.info(f"Recherche texte Atlas Search : {q}")
+            pipeline = build_text_search_pipeline(q, num_words, skip=0, limit=fetch_limit)
 
-        except Exception as e:
-            logger.error(f"Erreur recherche {store_name}: {e}")
-            continue
+        for get_col, store_name in get_all_stores():
+            try:
+                col = get_col()
+                results = list(col.aggregate(pipeline, allowDiskUse=True))
+                for doc in results:
+                    doc['_source'] = store_name
+                raw_docs.extend(results)
+                logger.info(f"{store_name} : {len(results)} résultats Atlas Search")
+            except Exception as e:
+                # Fallback regex si l'index Atlas Search "Text" n'est pas disponible
+                logger.warning(f"Atlas Search indisponible pour {store_name}, fallback regex : {e}")
+                try:
+                    col = get_col()
+                    query_filter = {'title': {'$regex': re.escape(q), '$options': 'i'}}
+                    for doc in col.find(query_filter, PRODUIT_PROJECTION).limit(fetch_limit):
+                        doc['_source'] = store_name
+                        raw_docs.append(doc)
+                except Exception as e2:
+                    logger.error(f"Fallback regex échoué {store_name} : {e2}")
 
-    # Dédoublonnage par référence (garder le meilleur prix)
+        # Post-filtrage pertinence sur docs bruts (champ `title`)
+        if is_reference and raw_docs:
+            raw_docs, _ = filter_exact_matches(raw_docs)
+        elif num_words >= 2 and raw_docs:
+            raw_docs = filter_by_relevance(raw_docs, query_words, num_words)
+
+    else:
+        # ── Filtre par catégorie / marque (regex classique) ──────────────────
+        for get_col, store_name in get_all_stores():
+            try:
+                col = get_col()
+                query_filter = {}
+                if q:
+                    query_filter['title'] = {'$regex': re.escape(q), '$options': 'i'}
+                if categorie:
+                    query_filter['category'] = {'$regex': re.escape(categorie), '$options': 'i'}
+                if marque:
+                    query_filter['brand'] = {'$regex': re.escape(marque), '$options': 'i'}
+                for doc in col.find(query_filter, PRODUIT_PROJECTION).limit(PAGE_SIZE * 2):
+                    doc['_source'] = store_name
+                    raw_docs.append(doc)
+            except Exception as e:
+                logger.error(f"Erreur filtre {store_name} : {e}")
+                continue
+
+    # ── Formatage ────────────────────────────────────────────────────────────
+    produits = [
+        format_produit_from_store(doc, doc.pop('_source'))
+        for doc in raw_docs
+    ]
+
+    # ── Dédoublonnage par référence (garder le meilleur prix) ────────────────
     seen_refs = {}
     deduped = []
     for p in produits:
@@ -227,7 +292,6 @@ def produits_list(request):
         else:
             deduped.append(p)
 
-    # Mettre à jour avec les meilleurs prix
     final = [seen_refs.get(p.get('reference'), p) if p.get('reference') else p for p in deduped]
 
     return Response(paginate(final, page))
