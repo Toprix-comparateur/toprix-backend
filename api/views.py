@@ -189,26 +189,30 @@ def get_page_number(request) -> int:
 def produits_list(request):
     """
     GET /api/v1/produits/
-    Params: q, page, categorie, marque
+    Params: q, page, categorie, marque, prix_min, prix_max, en_promo
 
     Logique de recherche :
     - q seul  → Atlas Search (phrase/fuzzy) si index "Text" disponible, sinon fallback regex
     - q + référence détectée → pipeline exact reference match
     - categorie / marque → regex classique sur les champs MongoDB
+    - prix_min / prix_max / en_promo → post-filtrage Python après recherche
     - Post-filtrage par pertinence pour queries multi-mots
     """
     q = request.GET.get('q', '').strip()
     categorie = request.GET.get('categorie', '').strip()
     marque = request.GET.get('marque', '').strip()
+    prix_min = safe_price(request.GET.get('prix_min', ''))
+    prix_max = safe_price(request.GET.get('prix_max', ''))
+    en_promo = request.GET.get('en_promo', '').strip() in ('1', 'true')
     page = get_page_number(request)
 
-    if not q and not categorie and not marque:
+    if not q and not categorie and not marque and prix_min is None and prix_max is None and not en_promo:
         return Response({'data': [], 'meta': {'page': 1, 'total_pages': 0, 'total_items': 0, 'par_page': PAGE_SIZE}})
 
     # Nettoyage de la requête textuelle
     if q:
         q = clean_search_query(q)
-        if not q:
+        if not q and not categorie and not marque and prix_min is None and prix_max is None and not en_promo:
             return Response({'data': [], 'meta': {'page': 1, 'total_pages': 0, 'total_items': 0, 'par_page': PAGE_SIZE}})
 
     raw_docs = []  # docs bruts MongoDB, chacun avec '_source' = store_name
@@ -254,7 +258,7 @@ def produits_list(request):
             raw_docs = filter_by_relevance(raw_docs, query_words, num_words)
 
     else:
-        # ── Filtre par catégorie / marque (regex classique) ──────────────────
+        # ── Filtre par catégorie / marque / prix / promo (regex classique) ───
         for get_col, store_name in get_all_stores():
             try:
                 col = get_col()
@@ -265,12 +269,25 @@ def produits_list(request):
                     query_filter['category'] = {'$regex': re.escape(categorie), '$options': 'i'}
                 if marque:
                     query_filter['brand'] = {'$regex': re.escape(marque), '$options': 'i'}
+                if en_promo:
+                    query_filter['discount'] = {'$gt': 0}
+                if not query_filter:
+                    # Sans aucun critère textuel, on évite de charger toute la collection
+                    continue
                 for doc in col.find(query_filter, PRODUIT_PROJECTION).limit(PAGE_SIZE * 2):
                     doc['_source'] = store_name
                     raw_docs.append(doc)
             except Exception as e:
                 logger.error(f"Erreur filtre {store_name} : {e}")
                 continue
+
+    # ── Post-filtrage prix / promotion (applicable aux deux branches) ─────────
+    if prix_min is not None:
+        raw_docs = [d for d in raw_docs if safe_price(d.get('price')) is not None and safe_price(d.get('price')) >= prix_min]
+    if prix_max is not None:
+        raw_docs = [d for d in raw_docs if safe_price(d.get('price')) is not None and safe_price(d.get('price')) <= prix_max]
+    if en_promo:
+        raw_docs = [d for d in raw_docs if (d.get('discount') or 0) > 0]
 
     # ── Formatage ────────────────────────────────────────────────────────────
     produits = [
