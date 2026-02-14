@@ -241,11 +241,55 @@ def produits_list(request):
 def produit_detail(request, slug: str):
     """
     GET /api/v1/produits/<slug>/
-    Retourne le détail d'un produit depuis la collection comparatif.
+    - Si slug ressemble à un ObjectId (24 hex) → cherche dans les 3 per-store collections
+    - Sinon → cherche dans comparatif par Slug
     """
+    IS_OBJECT_ID = bool(re.match(r'^[0-9a-f]{24}$', slug, re.I))
+
+    if IS_OBJECT_ID:
+        # Recherche par ObjectId dans les per-store collections
+        try:
+            oid = ObjectId(slug)
+        except Exception:
+            return Response({'erreur': 'Identifiant invalide'}, status=status.HTTP_400_BAD_REQUEST)
+
+        for get_col, store_name in get_all_stores():
+            try:
+                doc = get_col().find_one({'_id': oid})
+                if doc:
+                    prix = safe_price(doc.get('price'))
+                    offre = {
+                        'boutique': store_name,
+                        'prix': prix,
+                        'stock': doc.get('etat_stock', ''),
+                        'url': doc.get('url', ''),
+                        'image': doc.get('product_image', ''),
+                    }
+                    return Response({
+                        'id': str(doc['_id']),
+                        'slug': slug,
+                        'nom': doc.get('title', ''),
+                        'marque': (doc.get('brand') or '').title(),
+                        'categorie': doc.get('category', ''),
+                        'reference': doc.get('reference', ''),
+                        'image': doc.get('product_image', ''),
+                        'prix_min': prix,
+                        'prix_max': safe_price(doc.get('old_price')) or prix,
+                        'en_stock': doc.get('etat_stock') == 'En stock',
+                        'boutique': store_name,
+                        'url_boutique': doc.get('url', ''),
+                        'offres': [offre] if prix else [],
+                    })
+            except Exception as e:
+                logger.error(f"Erreur produit_detail ObjectId {store_name}: {e}")
+                continue
+
+        return Response({'erreur': 'Produit introuvable'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Recherche dans comparatif par Slug
     try:
         col = get_comparatif()
-        doc = col.find_one({'Slug': slug, 'Matching': 'Exact Match'})
+        doc = col.find_one({'Slug': slug})
     except Exception as e:
         logger.error(f"Erreur MongoDB produit_detail {slug}: {e}")
         return Response({'erreur': 'Erreur serveur'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -314,10 +358,13 @@ def categories_list(request):
                 slug = doc['_id']
                 if slug:
                     if slug not in cats:
+                        nom_brut = doc.get('nom') or ''
+                        # Extraire le dernier segment du path "Accueil > ... > Nom"
+                        nom_clean = nom_brut.split('>')[-1].strip() if '>' in nom_brut else (nom_brut or slug.replace('-', ' ').title())
                         cats[slug] = {
                             'id': slug,
                             'slug': slug,
-                            'nom': doc.get('nom') or slug.replace('-', ' ').title(),
+                            'nom': nom_clean,
                             'nombre_produits': 0,
                         }
                     cats[slug]['nombre_produits'] += doc['count']
