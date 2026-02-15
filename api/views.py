@@ -271,6 +271,13 @@ def produits_list(request):
                     query_filter['brand'] = {'$regex': re.escape(marque), '$options': 'i'}
                 if en_promo:
                     query_filter['discount'] = {'$gt': 0}
+                if prix_min is not None or prix_max is not None:
+                    price_filter = {}
+                    if prix_min is not None:
+                        price_filter['$gte'] = prix_min
+                    if prix_max is not None:
+                        price_filter['$lte'] = prix_max
+                    query_filter['price'] = price_filter
                 if not query_filter:
                     # Sans aucun critère textuel, on évite de charger toute la collection
                     continue
