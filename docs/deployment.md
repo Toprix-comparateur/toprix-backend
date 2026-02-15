@@ -6,8 +6,8 @@
 
 | Composant | Plateforme | URL |
 |-----------|-----------|-----|
-| **Backend API** | **Serv00** | `https://api.toprix.net` |
-| **Frontend** | Vercel | `https://toprix.net` |
+| **Backend API** | **Serv00** | `https://api.toprix.tn` |
+| **Frontend** | Vercel | `https://toprix.tn` |
 
 ---
 
@@ -16,7 +16,7 @@
 ```
 /home/oven-cleaner/
 ├── domains/
-│   └── api.toprix.net/
+│   └── api.toprix.tn/
 │       ├── public_python/       ← Dossier de l'application Python
 │       │   ├── (fichiers du projet)
 │       │   └── passenger_wsgi.py
@@ -31,9 +31,9 @@
 
 ```bash
 # Sur Serv00 via SSH
-ssh oven-cleaner@repo3.serv00.com
+ssh oven-cleaner@s3.serv00.com
 
-cd ~/domains/api.toprix.net/
+cd ~/domains/api.toprix.tn/
 git clone https://github.com/Toprix-comparateur/toprix-backend.git public_python
 cd public_python
 ```
@@ -56,9 +56,9 @@ Variables minimales pour la production :
 ```bash
 SECRET_KEY=votre-cle-secrete-longue-et-aleatoire
 DEBUG=False
-ALLOWED_HOSTS=api.toprix.net,www.api.toprix.net
+ALLOWED_HOSTS=api.toprix.tn,www.api.toprix.tn
 
-CORS_ALLOWED_ORIGINS=https://toprix.net,https://www.toprix.net
+CORS_ALLOWED_ORIGINS=https://toprix.tn,https://www.toprix.tn
 
 MONGODB_TUNISIANET_URI=mongodb+srv://...
 MONGODB_MYTEK_URI=mongodb+srv://...
@@ -66,9 +66,9 @@ MONGODB_SPACENET_URI=mongodb+srv://...
 MONGODB_COMPARATIF_URI=mongodb+srv://...
 
 EMAIL_HOST=mail3.serv00.com
-EMAIL_HOST_USER=noreply@toprix.net
+EMAIL_HOST_USER=noreply@toprix.tn
 EMAIL_HOST_PASSWORD=...
-DEFAULT_FROM_EMAIL=noreply@toprix.net
+DEFAULT_FROM_EMAIL=noreply@toprix.tn
 ```
 
 ### 4. Migrations et fichiers statiques
@@ -105,9 +105,17 @@ from core.wsgi import application
 
 ## Déploiement des mises à jour
 
+### Via webhook GitHub (automatique)
+
+Le push sur `main` déclenche le webhook Serv00 qui fait un `git pull`. **Attention :** le webhook ne redémarre pas toujours Passenger. Si les changements ne sont pas visibles, redémarrer manuellement.
+
+### Manuellement via SSH
+
 ```bash
-# Sur Serv00
-cd ~/domains/api.toprix.net/public_python
+# Connexion SSH
+ssh oven-cleaner@s3.serv00.com
+
+cd ~/domains/api.toprix.tn/public_python
 
 # Récupérer les changements
 git pull origin main
@@ -125,14 +133,17 @@ python manage.py collectstatic --noinput
 touch tmp/restart.txt
 ```
 
+> **Si le webhook a fait le `git pull` mais l'API retourne toujours l'ancien comportement :**
+> SSH + `touch tmp/restart.txt` suffit pour recharger Django sans refaire `git pull`.
+
 ---
 
 ## Configuration DNS
 
-Pour faire pointer `api.toprix.net` vers Serv00 :
+Pour faire pointer `api.toprix.tn` vers Serv00 :
 
 ```
-CNAME  api  repo3.serv00.com
+CNAME  api  s3.serv00.com
 ```
 
 Ou avec un enregistrement A (IP de Serv00).
@@ -144,7 +155,7 @@ Ou avec un enregistrement A (IP de Serv00).
 Le backend autorise les requêtes depuis le frontend dans `.env` :
 
 ```bash
-CORS_ALLOWED_ORIGINS=https://toprix.net,https://www.toprix.net,http://localhost:3000
+CORS_ALLOWED_ORIGINS=https://toprix.tn,https://www.toprix.tn,http://localhost:3000
 ```
 
 En production, supprimer `http://localhost:3000`.
@@ -163,10 +174,10 @@ cd /d/github/toprix
 python manage.py dumpdata comparer.BlogPost comparer.BlogSummary comparer.BlogSpecifications comparer.BlogSection --indent 2 > blog_export.json
 
 # Transférer vers Serv00
-scp blog_export.json oven-cleaner@repo3.serv00.com:~/domains/api.toprix.net/public_python/
+scp blog_export.json oven-cleaner@s3.serv00.com:~/domains/api.toprix.tn/public_python/
 
 # Sur Serv00 — importer dans le nouveau projet
-cd ~/domains/api.toprix.net/public_python
+cd ~/domains/api.toprix.tn/public_python
 python manage.py loaddata blog_export.json
 ```
 
@@ -197,6 +208,8 @@ python manage.py loaddata blog_export.json
 
 ### Fonctionnel
 - [ ] `GET /api/v1/produits/?q=test` retourne des résultats
+- [ ] `GET /api/v1/produits/?en_promo=1` retourne `total_items > 0` (produits avec `discount > 0`)
+- [ ] `GET /api/v1/produits/?en_promo=1` page 1 : mix des 3 boutiques (round-robin)
 - [ ] `GET /api/v1/blog/` retourne les articles
 - [ ] `GET /api/v1/boutiques/` retourne les 3 boutiques
 - [ ] Admin Django accessible sur `/admin/`
@@ -207,10 +220,10 @@ python manage.py loaddata blog_export.json
 
 ```bash
 # Logs Django
-tail -f ~/domains/api.toprix.net/public_python/logs/django.log
+tail -f ~/domains/api.toprix.tn/public_python/logs/django.log
 
 # Logs API
-tail -f ~/domains/api.toprix.net/public_python/logs/api.log
+tail -f ~/domains/api.toprix.tn/public_python/logs/api.log
 ```
 
 ---

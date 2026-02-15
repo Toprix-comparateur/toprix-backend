@@ -76,6 +76,8 @@ Recherche de produits dans les 3 collections MongoDB (Tunisianet, Mytek, Spacene
 
 **Pagination** : 20 produits par page (`PAGE_SIZE = 20`). Dédoublonnage par référence (meilleur prix conservé).
 
+**Équilibrage des boutiques** : les résultats sont interleaved en **round-robin** (Tunisianet → Mytek → Spacenet → ...) pour éviter qu'une seule boutique monopolise la première page. Chaque boutique contribue au maximum `PAGE_SIZE × 2 = 40` documents bruts avant interleaving.
+
 **Exemples :**
 ```
 GET /api/v1/produits/?q=samsung+galaxy&page=1
