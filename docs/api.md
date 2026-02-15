@@ -56,6 +56,9 @@ Recherche de produits dans les 3 collections MongoDB (Tunisianet, Mytek, Spacene
 | `q` | string | Terme de recherche (Atlas Search ou regex selon mode) |
 | `categorie` | string | Filtrer par slug catégorie (regex, case-insensitive) |
 | `marque` | string | Filtrer par nom de marque (regex, case-insensitive) |
+| `prix_min` | float | Prix minimum en DT (post-filtrage Python) |
+| `prix_max` | float | Prix maximum en DT (post-filtrage Python) |
+| `en_promo` | `1`/`true` | Produits en promotion uniquement (`discount > 0`) |
 | `page` | int | Numéro de page (défaut : 1, max : 100) |
 
 **Logique de recherche :**
@@ -65,17 +68,20 @@ Recherche de produits dans les 3 collections MongoDB (Tunisianet, Mytek, Spacene
 | `q` seul (texte libre) | **Atlas Search** | compound : phrase (x10) + texte (x5) + fuzzy (x2), tri par `starts_with` puis `search_score` |
 | `q` seul (référence détectée) | **Pipeline référence** | match exact sur `reference`, `exact_match` score, tri prix ASC |
 | `q` + `categorie`/`marque` | Regex MongoDB | `$regex` sur `title`, `category`, `brand` |
-| `categorie`/`marque` sans `q` | Regex MongoDB | `$regex` sur `category`/`brand` uniquement |
+| `categorie`/`marque`/`en_promo` sans `q` | Regex MongoDB | `$regex` + filtre `discount > 0` au niveau MongoDB |
+| `prix_min`/`prix_max` | Post-filtrage Python | Appliqué sur `raw_docs` après les deux branches (compatible types string/number) |
 
 > Une **référence** est un token sans espace contenant des chiffres ou tirets (ex : `SM-S921B`, `12000BTU`).
 > Fallback automatique sur regex si l'index Atlas Search `"Text"` est indisponible.
 
 **Pagination** : 20 produits par page (`PAGE_SIZE = 20`). Dédoublonnage par référence (meilleur prix conservé).
 
-**Exemple :**
+**Exemples :**
 ```
 GET /api/v1/produits/?q=samsung+galaxy&page=1
 GET /api/v1/produits/?q=laptop&categorie=ordinateurs-portables&marque=hp
+GET /api/v1/produits/?q=smartphone&prix_min=500&prix_max=1500&en_promo=1
+GET /api/v1/produits/?en_promo=1&marque=samsung
 ```
 
 **Réponse :**
@@ -127,23 +133,29 @@ GET /api/v1/produits/samsung-galaxy-s24/
 **Réponse (ObjectId — 1 boutique) :**
 ```json
 {
-  "id": "68a45751dc1cf04413890156",
-  "slug": "68a45751dc1cf04413890156",
-  "nom": "Chargeur Hama pour iPhone",
-  "marque": "Hama",
-  "categorie": "chargeurs-et-cables-pour-telephones",
-  "reference": "89434",
-  "image": "https://www.tunisianet.com.tn/...",
-  "prix_min": 5.9,
-  "prix_max": 5.9,
+  "id": "691ef0baf4abe379312e57d0",
+  "slug": "691ef0baf4abe379312e57d0",
+  "nom": "Montre Femme SUPERDRY - Star Gris ( SYL-275E)",
+  "marque": "Superdry",
+  "categorie": "montre",
+  "categorie_nom": "Montre",
+  "reference": "SYL-275E",
+  "image": "https://www.mytek.tn/media/catalog/product//s/y/syl-275e.jpg",
+  "description": "Montre Femme SUPERDRY - Forme: Ronde - Type d'affichage: Analogique...",
+  "prix_min": 199.5,
+  "prix_max": 239.5,
+  "discount": 40.0,
   "en_stock": true,
-  "boutique": "Tunisianet",
-  "url_boutique": "https://www.tunisianet.com.tn/...",
+  "boutique": "Mytek",
+  "url_boutique": "https://www.mytek.tn/montre-femme-superdry-star-gris-syl-275e.html",
   "offres": [
-    { "boutique": "Tunisianet", "prix": 5.9, "stock": "En stock", "url": "...", "image": "..." }
+    { "boutique": "Mytek", "prix": 199.5, "stock": "En stock", "url": "...", "image": "..." }
   ]
 }
 ```
+
+> `prix_max` = `old_price` (avant réduction). `discount` = montant de la réduction en DT (ex: 40.0 DT). `description` = contenu du champ `fiche_technique`.
+> `prix_max` est `null` si identique à `prix_min` (pas de réduction).
 
 **Réponse (Slug — comparatif, multi-boutiques) :**
 ```json
