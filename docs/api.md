@@ -9,7 +9,7 @@ Base URL : `https://api.toprix.tn/api/v1`
 | Méthode | Endpoint | Description |
 |---------|----------|-------------|
 | GET | `/produits/` | Recherche et liste de produits |
-| GET | `/produits/<slug>/` | Détail d'un produit (avec offres par boutique) |
+| GET | `/produits/<slug>/` | Détail d'un produit (offres multi-stores par SKU) |
 | GET | `/categories/` | Liste de toutes les catégories |
 | GET | `/categories/<slug>/` | Catégorie + ses produits |
 | GET | `/marques/` | Liste de toutes les marques |
@@ -56,8 +56,8 @@ Recherche de produits dans les 3 collections MongoDB (Tunisianet, Mytek, Spacene
 | `q` | string | Terme de recherche (Atlas Search ou regex selon mode) |
 | `categorie` | string | Filtrer par slug catégorie (regex, case-insensitive) |
 | `marque` | string | Filtrer par nom de marque (regex, case-insensitive) |
-| `prix_min` | float | Prix minimum en DT (post-filtrage Python) |
-| `prix_max` | float | Prix maximum en DT (post-filtrage Python) |
+| `prix_min` | float | Prix minimum en DT |
+| `prix_max` | float | Prix maximum en DT |
 | `en_promo` | `1`/`true` | Produits en promotion uniquement (`discount > 0`) |
 | `page` | int | Numéro de page (défaut : 1, max : 100) |
 
@@ -68,8 +68,8 @@ Recherche de produits dans les 3 collections MongoDB (Tunisianet, Mytek, Spacene
 | `q` seul (texte libre) | **Atlas Search** | compound : phrase (x10) + texte (x5) + fuzzy (x2), tri par `starts_with` puis `search_score` |
 | `q` seul (référence détectée) | **Pipeline référence** | match exact sur `reference`, `exact_match` score, tri prix ASC |
 | `q` + `categorie`/`marque` | Regex MongoDB | `$regex` sur `title`, `category`, `brand` |
-| `categorie`/`marque`/`en_promo` sans `q` | Regex MongoDB | `$regex` + filtre `discount > 0` au niveau MongoDB |
-| `prix_min`/`prix_max` | Post-filtrage Python | Appliqué sur `raw_docs` après les deux branches (compatible types string/number) |
+| `categorie`/`marque`/`en_promo`/`prix` sans `q` | Regex MongoDB | filtres directs au niveau MongoDB |
+| `prix_min`/`prix_max` | MongoDB + post-filtrage Python | filtre `price` dans le query MongoDB ET post-filtre Python (double sécurité) |
 
 > Une **référence** est un token sans espace contenant des chiffres ou tirets (ex : `SM-S921B`, `12000BTU`).
 > Fallback automatique sur regex si l'index Atlas Search `"Text"` est indisponible.
@@ -82,6 +82,8 @@ GET /api/v1/produits/?q=samsung+galaxy&page=1
 GET /api/v1/produits/?q=laptop&categorie=ordinateurs-portables&marque=hp
 GET /api/v1/produits/?q=smartphone&prix_min=500&prix_max=1500&en_promo=1
 GET /api/v1/produits/?en_promo=1&marque=samsung
+GET /api/v1/produits/?prix_min=200&prix_max=800
+GET /api/v1/produits/?categorie=electromenager&en_promo=1
 ```
 
 **Réponse :**
@@ -121,7 +123,7 @@ GET /api/v1/produits/?en_promo=1&marque=samsung
 ## `GET /produits/<id>/`
 
 Accepte deux types d'identifiants :
-- **ObjectId MongoDB** (24 hex) → cherche dans les 3 per-store collections
+- **ObjectId MongoDB** (24 hex) → cherche dans les 3 per-store collections, puis recherche le même `reference` dans les 3 stores pour construire la liste d'offres
 - **Slug texte** → cherche dans `comparatif`
 
 **Exemples :**
@@ -130,32 +132,38 @@ GET /api/v1/produits/68a45751dc1cf04413890156/
 GET /api/v1/produits/samsung-galaxy-s24/
 ```
 
-**Réponse (ObjectId — 1 boutique) :**
+**Réponse (ObjectId — comparaison multi-stores par SKU) :**
+
+Le produit est cherché par ObjectId. Si le champ `reference` est renseigné, les 3 stores sont interrogés pour trouver le même SKU. Le tableau `offres` contiendra toutes les boutiques proposant ce produit, trié par prix croissant.
+
 ```json
 {
   "id": "691ef0baf4abe379312e57d0",
   "slug": "691ef0baf4abe379312e57d0",
-  "nom": "Montre Femme SUPERDRY - Star Gris ( SYL-275E)",
-  "marque": "Superdry",
-  "categorie": "montre",
-  "categorie_nom": "Montre",
-  "reference": "SYL-275E",
-  "image": "https://www.mytek.tn/media/catalog/product//s/y/syl-275e.jpg",
-  "description": "Montre Femme SUPERDRY - Forme: Ronde - Type d'affichage: Analogique...",
-  "prix_min": 199.5,
-  "prix_max": 239.5,
-  "discount": 40.0,
+  "nom": "Samsung Galaxy S24 128Go",
+  "marque": "Samsung",
+  "categorie": "smartphones",
+  "categorie_nom": "Smartphones",
+  "reference": "SM-S921B",
+  "image": "https://www.mytek.tn/media/catalog/product/...",
+  "description": "Écran 6.2\" Dynamic AMOLED 2X - 50MP - 8 Go RAM...",
+  "prix_min": 2799.0,
+  "prix_max": 2999.0,
+  "discount": 200.0,
   "en_stock": true,
   "boutique": "Mytek",
-  "url_boutique": "https://www.mytek.tn/montre-femme-superdry-star-gris-syl-275e.html",
+  "url_boutique": "https://www.mytek.tn/...",
   "offres": [
-    { "boutique": "Mytek", "prix": 199.5, "stock": "En stock", "url": "...", "image": "..." }
+    { "boutique": "Mytek",      "prix": 2799.0, "stock": "En stock", "url": "...", "image": "..." },
+    { "boutique": "Tunisianet", "prix": 2849.0, "stock": "En stock", "url": "...", "image": "..." },
+    { "boutique": "Spacenet",   "prix": 2999.0, "stock": "Rupture",  "url": "...", "image": "..." }
   ]
 }
 ```
 
-> `prix_max` = `old_price` (avant réduction). `discount` = montant de la réduction en DT (ex: 40.0 DT). `description` = contenu du champ `fiche_technique`.
+> `prix_max` = `old_price` (avant réduction). `discount` = montant de la réduction en DT (ex: 200.0 DT). `description` = contenu du champ `fiche_technique`.
 > `prix_max` est `null` si identique à `prix_min` (pas de réduction).
+> `offres` contient 1 à 3 entrées selon la disponibilité du SKU dans les stores. Si `reference` est vide, seule la boutique source est incluse.
 
 **Réponse (Slug — comparatif, multi-boutiques) :**
 ```json
@@ -289,7 +297,7 @@ Liste des articles de blog depuis SQLite, triés par date de publication décroi
       "id": "1",
       "slug": "meilleur-smartphone-2026",
       "titre": "Meilleur Smartphone 2026",
-      "image": "https://api.toprix.net/media/blog/image.jpg",
+      "image": "https://api.toprix.tn/media/blog/image.jpg",
       "date_publication": "2026-01-15T10:00:00+01:00",
       "resume": "Les 300 premiers caractères du contenu..."
     }
@@ -311,7 +319,7 @@ Détail complet d'un article.
   "slug": "meilleur-smartphone-2026",
   "titre": "Meilleur Smartphone 2026",
   "contenu": "<h2>Introduction</h2><p>...</p>",
-  "image": "https://api.toprix.net/media/blog/image.jpg",
+  "image": "https://api.toprix.tn/media/blog/image.jpg",
   "date_publication": "2026-01-15T10:00:00+01:00",
   "resume": "Les 300 premiers caractères...",
   "avantages": [
