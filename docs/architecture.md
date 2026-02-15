@@ -153,6 +153,71 @@ Django REST API (toprix-backend)
 
 ---
 
+## Frontend — Page d'accueil
+
+Dépôt : `Toprix-comparateur/toprix` — Next.js 15 App Router, Tailwind CSS 4, SSR (`force-dynamic`).
+
+### Chargement des données (Server Component)
+
+```ts
+// src/app/(public)/page.tsx
+const [promosRes, smartphonesRes, electroRes] = await Promise.allSettled([
+  getProduits({ en_promo: true }),
+  getProduits({ categorie: 'smartphones' }),
+  getProduits({ categorie: 'electromenager' }),
+])
+```
+
+3 appels API parallèles vers `GET /api/v1/produits/`. Les produits en promo sont divisés : `tendances` (1-8) et `topPromos` (9-16).
+
+### Sections de la page (dans l'ordre)
+
+| # | Section | Composant | Notes |
+|---|---------|-----------|-------|
+| 1 | Hero | inline JSX | Fond `#0F172A`, recherche, stats |
+| 2 | Catégories pills | `CategoriesPills` | Barre de nav rapide, défilement horizontal |
+| 3 | Tendances actuelles | `CarteProduit` × 8 | Grille `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4` |
+| 4 | Top promos | `CarteProduit` × 8 | Fond `orange-50/70` gradient |
+| 5 | Catégories populaires | Links | Grille `grid-cols-4 lg:grid-cols-8` avec icônes |
+| 6 | Smartphones | `CarouselProduits` | Carrousel ◀▶ avec 10 produits |
+| 7 | Électroménager | `CarouselProduits` | Carrousel ◀▶ avec 10 produits |
+| 8 | Marques | `MarqueeMarques` | Défilement infini CSS, pause au survol |
+| 9 | CTA boutique | inline JSX | Fond `#0F172A`, lien vers `/ajouter` |
+
+### Composants UI clés
+
+| Composant | Type | Fichier | Description |
+|-----------|------|---------|-------------|
+| `CarteProduit` | Server | `src/components/product/CarteProduit.tsx` | Carte produit avec badge %, prix barré, stock |
+| `CarouselProduits` | **Client** | `src/components/ui/CarouselProduits.tsx` | Carrousel ◀▶ avec `useRef`/`scrollBy` |
+| `CategoriesPills` | Server | `src/components/ui/CategoriesPills.tsx` | Barre pills catégories, scroll horizontal |
+| `MarqueeMarques` | Server | `src/components/ui/MarqueeMarques.tsx` | Marquee infini CSS (`@keyframes marquee`) |
+| `Header` | **Client** | `src/components/layout/Header.tsx` | Navbar sticky + bandeau Ramadan |
+
+### Badge réduction (CarteProduit)
+
+```ts
+const pourcent = (hasDiscount && produit.prix_max && produit.prix_max > 0)
+  ? Math.round(((produit.prix_max - (produit.prix_min ?? 0)) / produit.prix_max) * 100)
+  : 0
+// Badge : -XX% si pourcent > 0, sinon -XX DT (montant brut)
+```
+
+### Animation marquee (globals.css)
+
+```css
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee { animation: marquee 30s linear infinite; }
+.animate-marquee:hover { animation-play-state: paused; }
+```
+
+Les marques sont doublées (×2) pour que la fin du premier lot raccorde le début du second sans saut visible.
+
+---
+
 ## Décisions architecturales
 
 ### 1. Séparation backend / frontend
