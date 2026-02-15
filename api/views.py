@@ -16,6 +16,7 @@ Endpoints :
 """
 import logging
 import re
+from itertools import zip_longest
 from bson import ObjectId
 
 from django.conf import settings
@@ -287,6 +288,19 @@ def produits_list(request):
             except Exception as e:
                 logger.error(f"Erreur filtre {store_name} : {e}")
                 continue
+
+    # ── Équilibrage round-robin par boutique ─────────────────────────────────
+    # Interleave Tunisianet / Mytek / Spacenet pour éviter qu'une boutique
+    # monopolise la première page (ex : en_promo=1 sans filtre catégorie)
+    if raw_docs:
+        per_store: dict = {}
+        for doc in raw_docs:
+            per_store.setdefault(doc.get('_source', ''), []).append(doc)
+        raw_docs = []
+        for groupe in zip_longest(*per_store.values()):
+            for doc in groupe:
+                if doc is not None:
+                    raw_docs.append(doc)
 
     # ── Post-filtrage prix / promotion (applicable aux deux branches) ─────────
     if prix_min is not None:
