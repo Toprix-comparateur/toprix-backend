@@ -348,13 +348,35 @@ def produit_detail(request, slug: str):
                     prix = safe_price(doc.get('price'))
                     old_prix = safe_price(doc.get('old_price'))
                     discount = safe_price(doc.get('discount')) or 0
-                    offre = {
-                        'boutique': store_name,
-                        'prix': prix,
-                        'stock': doc.get('etat_stock', ''),
-                        'url': doc.get('url', ''),
-                        'image': doc.get('product_image', ''),
-                    }
+                    reference = doc.get('reference', '')
+
+                    # Cherche le même SKU dans les 3 stores
+                    all_offres = []
+                    if reference:
+                        for get_col2, store_name2 in get_all_stores():
+                            try:
+                                doc2 = get_col2().find_one(
+                                    {'reference': {'$regex': f'^{re.escape(reference)}$', '$options': 'i'}},
+                                    PRODUIT_PROJECTION,
+                                )
+                                if doc2:
+                                    p2 = safe_price(doc2.get('price'))
+                                    if p2:
+                                        all_offres.append({
+                                            'boutique': store_name2,
+                                            'prix': p2,
+                                            'stock': doc2.get('etat_stock', ''),
+                                            'url': doc2.get('url', ''),
+                                            'image': doc2.get('product_image', ''),
+                                        })
+                            except Exception:
+                                pass
+                        all_offres.sort(key=lambda x: x['prix'])
+                    elif prix:
+                        all_offres = [{'boutique': store_name, 'prix': prix,
+                                       'stock': doc.get('etat_stock', ''),
+                                       'url': doc.get('url', ''), 'image': doc.get('product_image', '')}]
+
                     return Response({
                         'id': str(doc['_id']),
                         'slug': slug,
@@ -362,16 +384,16 @@ def produit_detail(request, slug: str):
                         'marque': (doc.get('brand') or '').title(),
                         'categorie': doc.get('category', ''),
                         'categorie_nom': doc.get('category_path', ''),
-                        'reference': doc.get('reference', ''),
+                        'reference': reference,
                         'image': doc.get('product_image', ''),
                         'description': doc.get('fiche_technique', ''),
-                        'prix_min': prix,
+                        'prix_min': min(o['prix'] for o in all_offres) if all_offres else prix,
                         'prix_max': old_prix if old_prix and old_prix != prix else None,
                         'discount': discount,
                         'en_stock': doc.get('etat_stock') == 'En stock',
                         'boutique': store_name,
                         'url_boutique': doc.get('url', ''),
-                        'offres': [offre] if prix else [],
+                        'offres': all_offres,
                     })
             except Exception as e:
                 logger.error(f"Erreur produit_detail ObjectId {store_name}: {e}")
