@@ -25,43 +25,46 @@ Stack : **Next.js 15 App Router · Tailwind CSS 4 · TypeScript**
 src/
 ├── app/
 │   ├── (public)/
-│   │   ├── page.tsx                  ← Page d'accueil
-│   │   ├── rechercher/page.tsx       ← Recherche + filtres
-│   │   ├── produit/[slug]/page.tsx   ← Détail produit
-│   │   ├── categories/page.tsx       ← Liste catégories
-│   │   ├── categories/[slug]/page.tsx← Catégorie produits
-│   │   ├── marques/page.tsx          ← Liste marques
-│   │   ├── marques/[nom]/page.tsx    ← Marque produits
-│   │   ├── blog/page.tsx             ← Liste articles
-│   │   ├── blog/[slug]/page.tsx      ← Détail article
-│   │   └── ajouter/page.tsx          ← Formulaire boutique
-│   ├── layout.tsx                    ← Layout root (Header + Footer)
-│   └── globals.css                   ← Tokens Tailwind + animations
+│   │   ├── page.tsx                     ← Page d'accueil (13 sections)
+│   │   ├── rechercher/page.tsx          ← Recherche + filtres (2 cols mobile)
+│   │   ├── produit/[slug]/page.tsx      ← Détail produit + produits similaires
+│   │   ├── categories/page.tsx          ← Liste catégories
+│   │   ├── categories/[slug]/page.tsx   ← Catégorie produits
+│   │   ├── marques/page.tsx             ← Liste marques
+│   │   ├── marques/[nom]/page.tsx       ← Marque produits
+│   │   ├── blog/page.tsx                ← Liste articles
+│   │   ├── blog/[slug]/page.tsx         ← Détail article
+│   │   └── ajouter/page.tsx             ← Formulaire boutique
+│   ├── layout.tsx                       ← Layout root (Header + Footer)
+│   └── globals.css                      ← Tokens Tailwind + @keyframes marquee
 │
 ├── components/
 │   ├── layout/
-│   │   ├── Header.tsx                ← Navbar sticky (client)
-│   │   └── Footer.tsx                ← Pied de page (server)
+│   │   ├── Header.tsx                   ← Navbar sticky (client)
+│   │   └── Footer.tsx                   ← Pied de page (server)
 │   ├── product/
-│   │   └── CarteProduit.tsx          ← Carte produit (server)
+│   │   └── CarteProduit.tsx             ← Carte produit (server)
 │   └── ui/
-│       ├── CarouselProduits.tsx      ← Carrousel ◀▶ (client)
-│       ├── CategoriesPills.tsx       ← Pills navigation (server)
-│       └── MarqueeMarques.tsx        ← Défilement marques (server)
+│       ├── CarouselProduits.tsx         ← Carrousel ◀▶ (client)
+│       ├── StoriesCategories.tsx        ← Cercles catégories style Stories (server)
+│       ├── CampagneTeasers.tsx          ← 2 bannières gradient promo (server)
+│       ├── TuilesCategoriesCarousel.tsx ← Tuiles catégories colorées (server)
+│       ├── Banners.tsx                  ← BannerStats + BannerHowItWorks + BannerBoutiques
+│       └── MarqueeMarques.tsx           ← Défilement infini marques (server)
 │
 ├── lib/
 │   └── api/
-│       └── produits.ts               ← getProduits() avec tous les filtres
+│       └── produits.ts                  ← getProduits() + getProduit()
 │
 └── types/
-    └── index.ts                      ← Types TypeScript globaux
+    └── index.ts                         ← Types TypeScript globaux
 ```
 
 ---
 
 ## Page d'accueil (`page.tsx`)
 
-Server Component — 3 appels API parallèles au rendu :
+Server Component — 3 appels API parallèles :
 
 ```ts
 const [promosRes, smartphonesRes, electroRes] = await Promise.allSettled([
@@ -71,30 +74,33 @@ const [promosRes, smartphonesRes, electroRes] = await Promise.allSettled([
 ])
 ```
 
-### Sections (dans l'ordre d'affichage)
+### Sections (dans l'ordre)
 
-| # | Section | Composant/JSX | Data source |
-|---|---------|---------------|-------------|
+| # | Section | Composant | Data |
+|---|---------|-----------|------|
 | 1 | **Hero** | JSX inline | — |
-| 2 | **CategoriesPills** | `<CategoriesPills />` | hardcodé |
-| 3 | **Tendances actuelles** | `<CarteProduit>` × 8 | `promos[0..7]` |
-| 4 | **Top promos** | `<CarteProduit>` × 8 | `promos[8..15]` |
-| 5 | **Catégories populaires** | `<Link>` × 8 | hardcodé |
-| 6 | **Smartphones** | `<CarouselProduits>` | `smartphones[0..9]` |
-| 7 | **Électroménager** | `<CarouselProduits>` | `electro[0..9]` |
-| 8 | **Marques** | `<MarqueeMarques />` | hardcodé |
-| 9 | **CTA boutique** | JSX inline | — |
+| 2 | **Stories catégories** | `StoriesCategories` | hardcodé (10 catégories) |
+| 3 | **Campaign teasers** | `CampagneTeasers` | hardcodé (2 teasers) |
+| 4 | **Tendances actuelles** | `CarouselProduits` | `promos[0..7]` |
+| 5 | **Top promos** | `CarouselProduits` | `promos[8..15]` |
+| 6 | **BannerStats** | `BannerStats` | hardcodé |
+| 7 | **Catégories tuiles** | `TuilesCategoriesCarousel` | hardcodé (10 tuiles) |
+| 8 | **BannerHowItWorks** | `BannerHowItWorks` | hardcodé |
+| 9 | **Smartphones** | `CarouselProduits` | `smartphones[0..9]` |
+| 10 | **Électroménager** | `CarouselProduits` | `electro[0..9]` |
+| 11 | **BannerBoutiques** | `BannerBoutiques` | hardcodé |
+| 12 | **Marques** | `MarqueeMarques` | hardcodé (16×2) |
+| 13 | **CTA boutique** | JSX inline | — |
 
 ---
 
 ## Composants
 
-### `CarteProduit` — Carte produit
+### `CarteProduit`
 
-**Fichier :** `src/components/product/CarteProduit.tsx`
-**Type :** Server Component
+**Fichier :** `src/components/product/CarteProduit.tsx` · Server Component
 
-Affiche une carte produit avec image, badge promo, marque, boutique, stock et prix.
+Carte produit avec image, badge réduction %, marque, store, stock et prix.
 
 #### Badge de réduction
 
@@ -102,136 +108,167 @@ Affiche une carte produit avec image, badge promo, marque, boutique, stock et pr
 const pourcent = (hasDiscount && produit.prix_max && produit.prix_max > 0)
   ? Math.round(((produit.prix_max - (produit.prix_min ?? 0)) / produit.prix_max) * 100)
   : 0
-
-// Affichage badge :
-// -XX%  si pourcent > 0
-// -XX DT  si pourcent = 0 (prix_max absent ou égal à prix_min)
+// -XX%  si pourcent > 0  |  -XX DT  si pourcent = 0
 ```
+
+#### Image
+
+- Fond : `bg-white`, ratio `aspect-[4/3]`, `object-contain`
 
 #### Couleurs boutiques
 
-| Boutique | Classe Tailwind |
-|----------|----------------|
-| Mytek | `bg-blue-50 border-blue-100` |
-| Tunisianet | `bg-green-50 border-green-100` |
-| Spacenet | `bg-purple-50 border-purple-100` |
-
-#### Props
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `produit` | `Produit` | Objet produit complet |
-
-#### Éléments responsives
-
-- Image : `aspect-[4/3] w-full` (ratio constant, adaptatif)
-- Padding : `p-3 sm:p-4`
-- Titre : `text-xs sm:text-sm`
-- Prix : `text-base sm:text-lg`
-- Touch target flèche : `w-9 h-9` (minimum 36px)
+| Boutique | Classes |
+|----------|---------|
+| Mytek | `bg-blue-50 border-blue-100 text-blue-600` |
+| Tunisianet | `bg-green-50 border-green-100 text-green-600` |
+| Spacenet | `bg-purple-50 border-purple-100 text-purple-600` |
 
 ---
 
-### `CarouselProduits` — Carrousel horizontal
+### `CarouselProduits`
 
-**Fichier :** `src/components/ui/CarouselProduits.tsx`
-**Type :** Client Component (`'use client'`)
+**Fichier :** `src/components/ui/CarouselProduits.tsx` · Client Component
 
-Carrousel de produits avec boutons ◀▶ et défilement CSS snap.
+Carrousel avec boutons ◀▶ et CSS scroll snap. Utilisé sur 4 sections homepage + produits similaires.
 
-#### Fonctionnement
+#### Largeurs cartes
+
+| Breakpoint | Largeur | Cartes visibles (~) |
+|-----------|---------|---------------------|
+| Mobile `<640px` | `w-36` (144px) | ~2.5 |
+| sm `640px+` | `w-44` (176px) | ~4 |
+| lg `1024px+` | `w-48` (192px) | ~6 |
 
 ```tsx
-const scrollRef = useRef<HTMLDivElement>(null)
-const [canLeft, setCanLeft] = useState(false)
-const [canRight, setCanRight] = useState(true)
+// scroll de ~700px par clic
+scrollRef.current?.scrollBy({ left: 700, behavior: 'smooth' })
+// Boutons opacity-0 quand canLeft/canRight = false
+```
 
-const checkScroll = useCallback(() => {
-  const el = scrollRef.current
-  if (!el) return
-  setCanLeft(el.scrollLeft > 4)
-  setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4)
-}, [])
+---
 
-// scroll de 700px par clic (~3 cartes)
-const scroll = (dir: 'left' | 'right') => {
-  scrollRef.current?.scrollBy({ left: dir === 'right' ? 700 : -700, behavior: 'smooth' })
+### `StoriesCategories`
+
+**Fichier :** `src/components/ui/StoriesCategories.tsx` · Server Component
+
+Rangée de cercles colorés par catégorie, style Instagram Stories.
+
+- Cercles `w-12 sm:w-14`, couleur solide unique par catégorie
+- Ring orange au hover : `ring-[#F97316] ring-offset-2`
+- Scrollable horizontal sans scrollbar
+- Remplace l'ancienne barre `CategoriesPills`
+
+---
+
+### `CampagneTeasers`
+
+**Fichier :** `src/components/ui/CampagneTeasers.tsx` · Server Component
+
+2 cartes gradient (1 col mobile → 2 cols sm+) avec badge, titre, sous-titre et CTA pill.
+
+| Teaser | Gradient | Icon | Href |
+|--------|----------|------|------|
+| Offres Ramadan | `#F97316 → #C2410C` | 🌙 | `/rechercher?en_promo=1` |
+| Nouvelles arrivées | `#3B82F6 → #1D4ED8` | ✨ | `/categories/smartphones` |
+
+---
+
+### `TuilesCategoriesCarousel`
+
+**Fichier :** `src/components/ui/TuilesCategoriesCarousel.tsx` · Server Component
+
+Carousel horizontal de tuiles carrées `w-24 sm:w-28 h-24 sm:h-28` avec fond teinté par catégorie.
+
+- Fond coloré unique (blue-50, rose-50, emerald-50…), border colorée au hover
+- Emoji `text-3xl/4xl` avec `scale-110` au hover
+- CSS snap scroll — remplace la grille fixe `grid-cols-4 lg:grid-cols-8`
+
+---
+
+### `Banners.tsx` — 3 composants
+
+**Fichier :** `src/components/ui/Banners.tsx` · Server Components (exports nommés)
+
+#### `BannerStats`
+
+Bande fond `#0F172A`, 4 chiffres clés en grid 2→4 cols avec icônes Lucide oranges.
+
+| Icône | Valeur | Label |
+|-------|--------|-------|
+| `Package` | 50 000+ | Produits référencés |
+| `Star` | 120+ | Marques disponibles |
+| `Store` | 3 | Boutiques partenaires |
+| `TrendingDown` | -40% | De réduction max |
+
+#### `BannerHowItWorks`
+
+3 cartes blanches avec numéro badge orange, icône colorée et description.
+
+| Badge | Titre | Icône | Fond icône |
+|-------|-------|-------|------------|
+| 01 | Recherchez | `Search` | `bg-blue-50 text-blue-500` |
+| 02 | Comparez | `BarChart2` | `bg-orange-50 text-[#F97316]` |
+| 03 | Achetez | `ShoppingCart` | `bg-green-50 text-green-500` |
+
+#### `BannerBoutiques`
+
+3 cartes boutiques en `grid-cols-3` avec logo `next/image`, badge catégorie et lien.
+
+| Boutique | Logo | Badge | Border hover |
+|----------|------|-------|-------------|
+| Mytek | `/stores/mytek.png` | Informatique & High-Tech | `hover:border-blue-300` |
+| Tunisianet | `/stores/tunisianet.png` | Électronique & Photo | `hover:border-green-300` |
+| Spacenet | `/stores/spacenet.png` | Multimédia & Gaming | `hover:border-purple-300` |
+
+---
+
+### `MarqueeMarques`
+
+**Fichier :** `src/components/ui/MarqueeMarques.tsx` · Server Component
+
+16 marques doublées (×2 = 32 items) pour boucle CSS sans saut.
+
+```css
+/* globals.css */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
+.animate-marquee { animation: marquee 30s linear infinite; }
+.animate-marquee:hover { animation-play-state: paused; }
 ```
-
-- Écoute `scroll` (passive) et `resize` sur `window`
-- Les boutons sont `opacity-0 pointer-events-none` quand le défilement est impossible
-- CSS : `overflow-x-auto snap-x snap-mandatory [scrollbar-width:none]`
-- Chaque carte : `snap-start shrink-0 w-[calc(50%-6px)] sm:w-[calc(33.33%-8px)] lg:w-[calc(25%-9px)]`
-
-#### Props
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `produits` | `Produit[]` | Liste de produits à afficher |
 
 ---
 
-### `CategoriesPills` — Navigation catégories
+## Page détail produit
 
-**Fichier :** `src/components/ui/CategoriesPills.tsx`
-**Type :** Server Component
+**Fichier :** `src/app/(public)/produit/[slug]/page.tsx`
 
-Barre de navigation rapide horizontale, scrollable sur mobile.
+Chargement séquentiel : `getProduit(slug)` puis `getProduits({ categorie })` pour les similaires.
 
-#### Catégories affichées
+```ts
+const res = await getProduits({ categorie: produit.categorie })
+similaires = res.data.filter(p => p.id !== produit.id).slice(0, 3)
+```
 
-| Label | Href | Icône |
-|-------|------|-------|
-| Smartphones | `/categories/smartphones` | 📱 |
-| Laptops | `/categories/ordinateurs-portables` | 💻 |
-| Tablettes | `/categories/tablettes` | 📟 |
-| Audio | `/categories/audio` | 🎧 |
-| Gaming | `/categories/gaming` | 🎮 |
-| Électroménager | `/categories/electromenager` | 🏠 |
-| Photo & Vidéo | `/categories/photo` | 📷 |
-| Imprimantes | `/categories/imprimantes` | 🖨️ |
-| Moniteurs | `/categories/moniteurs` | 🖥️ |
-| Tout voir | `/categories` | → |
-
-#### Comportement
-
-- Barre statique (`bg-white border-b border-[#E2E8F0]`), non sticky
-- Défilement horizontal masqué (`[scrollbar-width:none] [&::-webkit-scrollbar]:hidden`)
-- Hover : `border-[#F97316]/40 text-[#F97316] bg-orange-50`
+Section similaires : `grid grid-cols-3 gap-3 sm:gap-4`, affichée uniquement si `similaires.length > 0`.
 
 ---
 
-### `MarqueeMarques` — Défilement marques
+## Page recherche
 
-**Fichier :** `src/components/ui/MarqueeMarques.tsx`
-**Type :** Server Component
+**Fichier :** `src/app/(public)/rechercher/page.tsx`
 
-Défilement infini horizontal des marques référencées, pause au survol.
+Grille résultats : `grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5`
 
-#### Technique
-
-```tsx
-const MARQUES = ['Apple', 'Samsung', 'Sony', 'LG', 'Xiaomi', ...]  // 16 marques
-const doubled = [...MARQUES, ...MARQUES]  // 32 items pour loop sans saut
-
-// Animation CSS dans globals.css :
-// @keyframes marquee : translateX(0) → translateX(-50%)
-// .animate-marquee { animation: marquee 30s linear infinite }
-// .animate-marquee:hover { animation-play-state: paused }
-```
-
-- Durée : 30s (ajustable dans `globals.css`)
-- Les 16 marques sont dupliquées pour que la liste soit exactement 2× la largeur visible
-- Chaque marque est un `<Link>` vers `/marques/{marque.toLowerCase()}`
+- Mobile : **2 cartes par ligne**
+- lg : 3 colonnes · xl : 4 colonnes
 
 ---
 
 ## Appel API — `getProduits()`
 
 **Fichier :** `src/lib/api/produits.ts`
-
-Appelle `GET /api/v1/produits/` avec les filtres supportés :
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
@@ -245,7 +282,7 @@ Appelle `GET /api/v1/produits/` avec les filtres supportés :
 
 Retourne `{ data: Produit[], meta: { page, total_pages, total_items, par_page } }`.
 
-> **Note :** Toujours filtrer les paramètres `undefined` avant de construire `URLSearchParams` pour éviter les chaînes `"undefined"` dans l'URL.
+> **Note :** Toujours filtrer les paramètres `undefined` avant `URLSearchParams` — évite les chaînes `"undefined"` dans l'URL.
 
 ---
 
@@ -274,7 +311,7 @@ interface Produit {
 
 ---
 
-## Design tokens (globals.css)
+## Design tokens (`globals.css`)
 
 ```css
 @theme inline {
@@ -293,20 +330,14 @@ interface Produit {
 
 ---
 
-## Déploiement frontend (Vercel)
+## Déploiement (Vercel)
 
 ```bash
-# Déployer
-cd D:\github\toprix-frontend
+cd D:/github/toprix-frontend
 git push origin main
-# → Vercel détecte le push et redéploie automatiquement
-
-# URL de production
-https://toprix-mu.vercel.app
+# Vercel redéploie automatiquement → https://toprix-mu.vercel.app
 ```
 
-Variables d'environnement Vercel :
-
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_API_URL` | URL de l'API backend (`https://api.toprix.tn/api/v1`) |
+| Variable Vercel | Valeur |
+|-----------------|--------|
+| `NEXT_PUBLIC_API_URL` | `https://api.toprix.tn/api/v1` |

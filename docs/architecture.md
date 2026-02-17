@@ -175,22 +175,31 @@ const [promosRes, smartphonesRes, electroRes] = await Promise.allSettled([
 | # | Section | Composant | Notes |
 |---|---------|-----------|-------|
 | 1 | Hero | inline JSX | Fond `#0F172A`, recherche, stats |
-| 2 | Catégories pills | `CategoriesPills` | Barre de nav rapide, défilement horizontal |
-| 3 | Tendances actuelles | `CarteProduit` × 8 | Grille `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4` |
-| 4 | Top promos | `CarteProduit` × 8 | Fond `orange-50/70` gradient |
-| 5 | Catégories populaires | Links | Grille `grid-cols-4 lg:grid-cols-8` avec icônes |
-| 6 | Smartphones | `CarouselProduits` | Carrousel ◀▶ avec 10 produits |
-| 7 | Électroménager | `CarouselProduits` | Carrousel ◀▶ avec 10 produits |
-| 8 | Marques | `MarqueeMarques` | Défilement infini CSS, pause au survol |
-| 9 | CTA boutique | inline JSX | Fond `#0F172A`, lien vers `/ajouter` |
+| 2 | Stories catégories | `StoriesCategories` | Cercles colorés style Instagram Stories |
+| 3 | Campaign teasers | `CampagneTeasers` | 2 bannières gradient (Ramadan / Nouveautés) |
+| 4 | Tendances actuelles | `CarouselProduits` | Carousel ◀▶, promos[0..7] |
+| 5 | Top promos | `CarouselProduits` | Fond gradient orange-50, promos[8..15] |
+| 6 | **BannerStats** | `BannerStats` | Fond `#0F172A`, 4 chiffres clés |
+| 7 | Catégories tuiles | `TuilesCategoriesCarousel` | Tuiles carrées colorées, scroll horizontal |
+| 8 | **BannerHowItWorks** | `BannerHowItWorks` | 3 étapes numérotées (Recherchez→Comparez→Achetez) |
+| 9 | Smartphones | `CarouselProduits` | Carrousel ◀▶ avec 10 produits |
+| 10 | Électroménager | `CarouselProduits` | Carrousel ◀▶ avec 10 produits |
+| 11 | **BannerBoutiques** | `BannerBoutiques` | 3 cartes store (Mytek/Tunisianet/Spacenet) |
+| 12 | Marques | `MarqueeMarques` | Défilement infini CSS, pause au survol |
+| 13 | CTA boutique | inline JSX | Fond `#0F172A`, lien vers `/ajouter` |
 
 ### Composants UI clés
 
 | Composant | Type | Fichier | Description |
 |-----------|------|---------|-------------|
-| `CarteProduit` | Server | `src/components/product/CarteProduit.tsx` | Carte produit avec badge %, prix barré, stock |
-| `CarouselProduits` | **Client** | `src/components/ui/CarouselProduits.tsx` | Carrousel ◀▶ avec `useRef`/`scrollBy` |
-| `CategoriesPills` | Server | `src/components/ui/CategoriesPills.tsx` | Barre pills catégories, scroll horizontal |
+| `CarteProduit` | Server | `src/components/product/CarteProduit.tsx` | Carte produit, badge %, image `bg-white` |
+| `CarouselProduits` | **Client** | `src/components/ui/CarouselProduits.tsx` | Carrousel ◀▶ `useRef`/`scrollBy`, cartes `w-36 sm:w-44 lg:w-48` |
+| `StoriesCategories` | Server | `src/components/ui/StoriesCategories.tsx` | Cercles colorés par catégorie, ring orange hover |
+| `CampagneTeasers` | Server | `src/components/ui/CampagneTeasers.tsx` | 2 bannières gradient avec badge + CTA |
+| `TuilesCategoriesCarousel` | Server | `src/components/ui/TuilesCategoriesCarousel.tsx` | Tuiles `96×96px`, fond coloré par catégorie, snap carousel |
+| `BannerStats` | Server | `src/components/ui/Banners.tsx` | Bande sombre, 4 stats (Package/Star/Store/TrendingDown) |
+| `BannerHowItWorks` | Server | `src/components/ui/Banners.tsx` | 3 cartes étapes numérotées, icônes colorées |
+| `BannerBoutiques` | Server | `src/components/ui/Banners.tsx` | 3 cartes boutiques avec logo + badge catégorie |
 | `MarqueeMarques` | Server | `src/components/ui/MarqueeMarques.tsx` | Marquee infini CSS (`@keyframes marquee`) |
 | `Header` | **Client** | `src/components/layout/Header.tsx` | Navbar sticky + bandeau Ramadan |
 
