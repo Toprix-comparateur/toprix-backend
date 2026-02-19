@@ -12,8 +12,9 @@ urlpatterns = [
     path('produits/<slug:slug>/', views.produit_detail, name='produit-detail'),
 
     # Catégories
-    path('categories/',            views.categories_list,  name='categories-list'),
-    path('categories/<str:slug>/', views.categorie_detail, name='categorie-detail'),
+    path('categories/',                         views.categories_list,       name='categories-list'),
+    path('categories/<str:parent>/<str:sous>/', views.sous_categorie_detail, name='sous-categorie-detail'),
+    path('categories/<str:slug>/',              views.categorie_detail,      name='categorie-detail'),
 
     # Marques
     path('marques/',           views.marques_list,  name='marques-list'),

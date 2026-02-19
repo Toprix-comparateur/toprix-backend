@@ -16,6 +16,7 @@ Endpoints :
 """
 import logging
 import re
+import unicodedata
 from itertools import zip_longest
 from bson import ObjectId
 
@@ -180,6 +181,17 @@ def get_page_number(request) -> int:
         return max(1, min(p, MAX_PAGE))
     except (ValueError, TypeError):
         return 1
+
+
+def slugify_fr(text: str) -> str:
+    """Convertit un texte français en slug URL (minuscules, tirets, sans accents)."""
+    text = (text or '').strip().lower()
+    text = ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+    return text.strip('-')
 
 
 # ============================================
@@ -469,8 +481,10 @@ def categories_list(request):
     """
     GET /api/v1/categories/
     Agrège les catégories distinctes depuis les 3 collections per-store.
+    Retourne aussi les sous-catégories (2ème niveau du category_path).
     """
-    cats = {}
+    cats = {}       # {slug: {id, slug, nom, nombre_produits, sous_categories: {}}}
+    sous_cats = {}  # {f'{parent}/{sous_slug}': {id, slug, nom, parent_slug, nombre_produits}}
 
     for get_col, store_name in get_all_stores():
         try:
@@ -478,28 +492,56 @@ def categories_list(request):
             pipeline = [
                 {'$match': {'category': {'$exists': True, '$ne': None, '$ne': ''}}},
                 {'$group': {
-                    '_id': '$category',
-                    'nom': {'$first': '$category_path'},
+                    '_id': {'cat': '$category', 'path': '$category_path'},
                     'count': {'$sum': 1},
                 }},
             ]
             for doc in col.aggregate(pipeline):
-                slug = doc['_id']
-                if slug:
-                    if slug not in cats:
-                        nom_brut = doc.get('nom') or ''
-                        # Extraire le dernier segment du path "Accueil > ... > Nom"
-                        nom_clean = nom_brut.split('>')[-1].strip() if '>' in nom_brut else (nom_brut or slug.replace('-', ' ').title())
-                        cats[slug] = {
-                            'id': slug,
-                            'slug': slug,
-                            'nom': nom_clean,
+                cat_slug = doc['_id']['cat']
+                path = doc['_id']['path'] or ''
+                count = doc['count']
+
+                if not cat_slug:
+                    continue
+
+                parts = [p.strip() for p in path.split('>')] if '>' in path else []
+
+                # Catégorie parente
+                if cat_slug not in cats:
+                    parent_nom = parts[0] if parts else cat_slug.replace('-', ' ').title()
+                    cats[cat_slug] = {
+                        'id': cat_slug,
+                        'slug': cat_slug,
+                        'nom': parent_nom,
+                        'nombre_produits': 0,
+                    }
+                cats[cat_slug]['nombre_produits'] += count
+
+                # Sous-catégorie (2ème segment du path)
+                if len(parts) >= 2:
+                    sous_nom = parts[1]
+                    sous_slug = slugify_fr(sous_nom)
+                    key = f'{cat_slug}/{sous_slug}'
+                    if key not in sous_cats:
+                        sous_cats[key] = {
+                            'id': key,
+                            'slug': key,
+                            'nom': sous_nom,
+                            'parent_slug': cat_slug,
                             'nombre_produits': 0,
                         }
-                    cats[slug]['nombre_produits'] += doc['count']
+                    sous_cats[key]['nombre_produits'] += count
+
         except Exception as e:
             logger.error(f"Erreur catégories {store_name}: {e}")
             continue
+
+    # Injecter les sous-catégories dans chaque catégorie parente
+    for cat in cats.values():
+        cat['sous_categories'] = sorted(
+            [s for s in sous_cats.values() if s['parent_slug'] == cat['slug']],
+            key=lambda x: -x['nombre_produits'],
+        )
 
     result = sorted(cats.values(), key=lambda x: -x['nombre_produits'])
     return Response({'data': result, 'meta': {'total_items': len(result)}})
@@ -533,6 +575,59 @@ def categorie_detail(request, slug: str):
 
     response = paginate(produits, page)
     response['categorie'] = {'slug': slug, 'nom': categorie_nom}
+    return Response(response)
+
+
+@api_view(['GET'])
+def sous_categorie_detail(request, parent: str, sous: str):
+    """
+    GET /api/v1/categories/<parent>/<sous>/
+    Retourne les produits d'une sous-catégorie (2ème niveau du category_path).
+    """
+    page = get_page_number(request)
+    produits = []
+    sous_nom = sous.replace('-', ' ').title()
+
+    for get_col, store_name in get_all_stores():
+        try:
+            col = get_col()
+
+            # 1. Trouver les noms réels de sous-catégorie correspondant au slug
+            paths = col.distinct('category_path', {'category': parent})
+            matching_sous_noms = set()
+            for path in paths:
+                parts = [p.strip() for p in path.split('>')]
+                if len(parts) >= 2 and slugify_fr(parts[1]) == sous:
+                    matching_sous_noms.add(parts[1])
+                    sous_nom = parts[1]
+
+            if not matching_sous_noms:
+                continue
+
+            # 2. Chercher les produits avec category_path contenant ces sous-catégories
+            sous_regex = '|'.join(re.escape(n) for n in matching_sous_noms)
+            query = {
+                'category': parent,
+                'category_path': {'$regex': sous_regex, '$options': 'i'},
+            }
+            results = col.find(query, PRODUIT_PROJECTION).limit(PAGE_SIZE * 3)
+            for doc in results:
+                produits.append(format_produit_from_store(doc, store_name))
+
+        except Exception as e:
+            logger.error(f"Erreur sous-catégorie {parent}/{sous}: {e}")
+            continue
+
+    if not produits:
+        return Response({'erreur': 'Sous-catégorie introuvable'}, status=status.HTTP_404_NOT_FOUND)
+
+    response = paginate(produits, page)
+    response['categorie'] = {
+        'slug': f'{parent}/{sous}',
+        'nom': sous_nom,
+        'parent_slug': parent,
+        'parent_nom': parent.replace('-', ' ').title(),
+    }
     return Response(response)
 
 

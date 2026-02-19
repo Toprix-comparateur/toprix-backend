@@ -10,8 +10,9 @@ Base URL : `https://api.toprix.tn/api/v1`
 |---------|----------|-------------|
 | GET | `/produits/` | Recherche et liste de produits |
 | GET | `/produits/<slug>/` | Détail d'un produit (offres multi-stores par SKU) |
-| GET | `/categories/` | Liste de toutes les catégories |
-| GET | `/categories/<slug>/` | Catégorie + ses produits |
+| GET | `/categories/` | Liste de toutes les catégories avec leurs sous-catégories |
+| GET | `/categories/<slug>/` | Catégorie parente + ses produits |
+| GET | `/categories/<parent>/<sous>/` | Sous-catégorie + ses produits |
 | GET | `/marques/` | Liste de toutes les marques |
 | GET | `/marques/<nom>/` | Marque + ses produits |
 | GET | `/blog/` | Liste des articles de blog |
@@ -191,54 +192,96 @@ Les offres sont triées par prix croissant.
 
 ## `GET /categories/`
 
-Agrège les catégories distinctes depuis les 3 collections per-store.
+Agrège les catégories distinctes depuis les 3 collections per-store. Retourne aussi les sous-catégories (2ème niveau du `category_path`).
+
+Les slugs de sous-catégories sont dérivés de `category_path` via `slugify_fr()` (ex : `"Smartphone & Mobile"` → `"smartphone-mobile"`).
 
 **Réponse :**
 ```json
 {
   "data": [
     {
-      "id": "smartphones",
-      "slug": "smartphones",
-      "nom": "Smartphones",
-      "nombre_produits": 1240
+      "id": "informatique",
+      "slug": "informatique",
+      "nom": "Informatique",
+      "nombre_produits": 2648,
+      "sous_categories": [
+        { "id": "informatique/imprimante", "slug": "informatique/imprimante", "nom": "Imprimante", "parent_slug": "informatique", "nombre_produits": 1200 },
+        { "id": "informatique/stockage",   "slug": "informatique/stockage",   "nom": "Stockage",   "parent_slug": "informatique", "nombre_produits": 400 }
+      ]
     },
     {
-      "id": "ordinateurs-portables",
-      "slug": "ordinateurs-portables",
-      "nom": "Ordinateurs Portables",
-      "nombre_produits": 874
+      "id": "telephonie",
+      "slug": "telephonie",
+      "nom": "Téléphonie",
+      "nombre_produits": 1456,
+      "sous_categories": [
+        { "id": "telephonie/smartphone-mobile", "slug": "telephonie/smartphone-mobile", "nom": "Smartphone & Mobile", "parent_slug": "telephonie", "nombre_produits": 1456 }
+      ]
     }
   ],
-  "meta": { "total_items": 42 }
+  "meta": { "total_items": 14 }
 }
 ```
 
-Trié par `nombre_produits` décroissant.
+Trié par `nombre_produits` décroissant. `sous_categories` est également trié par `nombre_produits` décroissant.
 
 ---
 
 ## `GET /categories/<slug>/`
 
-Produits d'une catégorie spécifique.
+Produits d'une catégorie parente. Filtre sur `category = slug` (exact, case-insensitive).
 
 **Exemple :**
 ```
-GET /api/v1/categories/smartphones/?page=2
+GET /api/v1/categories/telephonie/?page=2
 ```
 
 **Réponse :**
 ```json
 {
   "categorie": {
-    "slug": "smartphones",
-    "nom": "Smartphones"
+    "slug": "telephonie",
+    "nom": "Téléphonie"
   },
   "data": [ ... ],
   "meta": {
     "page": 2,
     "total_pages": 8,
     "total_items": 96,
+    "par_page": 20
+  }
+}
+```
+
+---
+
+## `GET /categories/<parent>/<sous>/`
+
+Produits d'une sous-catégorie. Filtre sur `category = parent` ET `category_path` contient le 2ème segment correspondant au slug `<sous>`.
+
+La correspondance est faite en résolvant le slug vers les noms réels via `distinct('category_path')`.
+
+**Exemple :**
+```
+GET /api/v1/categories/informatique/stockage/?page=1
+GET /api/v1/categories/telephonie/smartphone-mobile/?page=1
+```
+
+**Réponse :**
+```json
+{
+  "categorie": {
+    "slug": "informatique/stockage",
+    "nom": "Stockage",
+    "parent_slug": "informatique",
+    "parent_nom": "Informatique"
+  },
+  "data": [ ... ],
+  "meta": {
+    "page": 1,
+    "total_pages": 3,
+    "total_items": 45,
     "par_page": 20
   }
 }
