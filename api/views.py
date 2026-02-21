@@ -618,7 +618,8 @@ def categorie_detail(request, slug: str):
 def sous_categorie_detail(request, parent: str, sous: str):
     """
     GET /api/v1/categories/<parent>/<sous>/
-    Retourne les produits d'une sous-catégorie (2ème niveau du category_path).
+    Retourne les produits d'une sous-catégorie.
+    Cherche d'abord via le champ `subcategory`, puis fallback sur `category_path`.
     """
     page = get_page_number(request)
     produits = []
@@ -628,8 +629,29 @@ def sous_categorie_detail(request, parent: str, sous: str):
         try:
             col = get_col()
 
-            # 1. Trouver les noms réels de sous-catégorie correspondant au slug
-            paths = col.distinct('category_path', {'category': parent})
+            # 1. Chercher via le champ subcategory (prioritaire)
+            query = {
+                'category': {'$regex': f'^{re.escape(parent)}$', '$options': 'i'},
+                'subcategory': {'$regex': f'^{re.escape(sous)}$', '$options': 'i'},
+            }
+            count = col.count_documents(query)
+
+            if count > 0:
+                # Récupérer le nom lisible depuis un document
+                sample = col.find_one(query, {'subcategory': 1, 'category_path': 1})
+                if sample and sample.get('category_path'):
+                    parts = [p.strip() for p in sample['category_path'].split('>')]
+                    if len(parts) >= 2:
+                        sous_nom = parts[1]
+                results = col.find(query, PRODUIT_PROJECTION).limit(PAGE_SIZE * 3)
+                for doc in results:
+                    produits.append(format_produit_from_store(doc, store_name))
+                continue
+
+            # 2. Fallback : chercher via category_path (slugify_fr)
+            paths = col.distinct('category_path', {
+                'category': {'$regex': f'^{re.escape(parent)}$', '$options': 'i'},
+            })
             matching_sous_noms = set()
             for path in paths:
                 parts = [p.strip() for p in path.split('>')]
@@ -640,10 +662,9 @@ def sous_categorie_detail(request, parent: str, sous: str):
             if not matching_sous_noms:
                 continue
 
-            # 2. Chercher les produits avec category_path contenant ces sous-catégories
             sous_regex = '|'.join(re.escape(n) for n in matching_sous_noms)
             query = {
-                'category': parent,
+                'category': {'$regex': f'^{re.escape(parent)}$', '$options': 'i'},
                 'category_path': {'$regex': sous_regex, '$options': 'i'},
             }
             results = col.find(query, PRODUIT_PROJECTION).limit(PAGE_SIZE * 3)
