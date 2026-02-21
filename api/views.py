@@ -202,13 +202,16 @@ def slugify_fr(text: str) -> str:
 def produits_list(request):
     """
     GET /api/v1/produits/
-    Params: q, page, categorie, marque, prix_min, prix_max, en_promo
+    Params: q, page, categorie, marque, prix_min, prix_max, en_promo, boutique, en_stock, tri
 
     Logique de recherche :
     - q seul  → Atlas Search (phrase/fuzzy) si index "Text" disponible, sinon fallback regex
     - q + référence détectée → pipeline exact reference match
     - categorie / marque → regex classique sur les champs MongoDB
     - prix_min / prix_max / en_promo → post-filtrage Python après recherche
+    - boutique → filtre sur une seule collection (mytek/tunisianet/spacenet)
+    - en_stock → filtre etat_stock == 'En stock'
+    - tri → prix_asc ou prix_desc appliqué après déduplication
     - Post-filtrage par pertinence pour queries multi-mots
     """
     q = request.GET.get('q', '').strip()
@@ -217,10 +220,20 @@ def produits_list(request):
     prix_min = safe_price(request.GET.get('prix_min', ''))
     prix_max = safe_price(request.GET.get('prix_max', ''))
     en_promo = request.GET.get('en_promo', '').strip() in ('1', 'true')
+    boutique = request.GET.get('boutique', '').strip().lower()   # 'mytek' | 'tunisianet' | 'spacenet'
+    en_stock = request.GET.get('en_stock', '').strip() in ('1', 'true')
+    tri = request.GET.get('tri', '').strip()                     # 'prix_asc' | 'prix_desc'
     page = get_page_number(request)
 
-    if not q and not categorie and not marque and prix_min is None and prix_max is None and not en_promo:
+    if not q and not categorie and not marque and prix_min is None and prix_max is None and not en_promo and not boutique and not en_stock:
         return Response({'data': [], 'meta': {'page': 1, 'total_pages': 0, 'total_items': 0, 'par_page': PAGE_SIZE}})
+
+    # Filtrage des collections selon la boutique demandée
+    all_stores = get_all_stores()
+    if boutique in ('mytek', 'tunisianet', 'spacenet'):
+        stores_to_query = [(fn, name) for fn, name in all_stores if name.lower() == boutique]
+    else:
+        stores_to_query = all_stores
 
     # Nettoyage de la requête textuelle
     if q:
@@ -244,7 +257,7 @@ def produits_list(request):
             logger.info(f"Recherche texte Atlas Search : {q}")
             pipeline = build_text_search_pipeline(q, num_words, skip=0, limit=fetch_limit)
 
-        for get_col, store_name in get_all_stores():
+        for get_col, store_name in stores_to_query:
             try:
                 col = get_col()
                 results = list(col.aggregate(pipeline, allowDiskUse=True))
@@ -272,7 +285,7 @@ def produits_list(request):
 
     else:
         # ── Filtre par catégorie / marque / prix / promo (regex classique) ───
-        for get_col, store_name in get_all_stores():
+        for get_col, store_name in stores_to_query:
             try:
                 col = get_col()
                 query_filter = {}
@@ -284,6 +297,8 @@ def produits_list(request):
                     query_filter['brand'] = {'$regex': re.escape(marque), '$options': 'i'}
                 if en_promo:
                     query_filter['discount'] = {'$gt': 0}
+                if en_stock:
+                    query_filter['etat_stock'] = 'En stock'
                 if prix_min is not None or prix_max is not None:
                     price_filter = {}
                     if prix_min is not None:
@@ -314,13 +329,15 @@ def produits_list(request):
                 if doc is not None:
                     raw_docs.append(doc)
 
-    # ── Post-filtrage prix / promotion (applicable aux deux branches) ─────────
+    # ── Post-filtrage prix / promotion / stock (applicable aux deux branches) ──
     if prix_min is not None:
         raw_docs = [d for d in raw_docs if safe_price(d.get('price')) is not None and safe_price(d.get('price')) >= prix_min]
     if prix_max is not None:
         raw_docs = [d for d in raw_docs if safe_price(d.get('price')) is not None and safe_price(d.get('price')) <= prix_max]
     if en_promo:
         raw_docs = [d for d in raw_docs if (d.get('discount') or 0) > 0]
+    if en_stock:
+        raw_docs = [d for d in raw_docs if d.get('etat_stock') == 'En stock']
 
     # ── Formatage ────────────────────────────────────────────────────────────
     produits = [
@@ -343,6 +360,12 @@ def produits_list(request):
             deduped.append(p)
 
     final = [seen_refs.get(p.get('reference'), p) if p.get('reference') else p for p in deduped]
+
+    # ── Tri par prix ─────────────────────────────────────────────────────────
+    if tri == 'prix_asc':
+        final.sort(key=lambda x: x.get('prix_min') or 9_999_999)
+    elif tri == 'prix_desc':
+        final.sort(key=lambda x: -(x.get('prix_min') or 0))
 
     return Response(paginate(final, page))
 
