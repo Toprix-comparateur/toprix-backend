@@ -573,29 +573,33 @@ def categorie_detail(request, slug: str):
     if not produits:
         return Response({'erreur': 'Catégorie introuvable'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Récupérer les sous-catégories (2ème niveau du category_path)
+    # Récupérer les sous-catégories via le champ subcategory
     sous_cats = {}
     for get_col, store_name in get_all_stores():
         try:
             col = get_col()
-            query = {'category': {'$regex': f'^{re.escape(slug)}$', '$options': 'i'}}
-            paths = col.distinct('category_path', query)
-            for path in paths:
-                parts = [p.strip() for p in path.split('>')] if '>' in path else []
-                if len(parts) >= 2:
-                    sous_nom = parts[1]
-                    sous_slug = slugify_fr(sous_nom)
-                    key = f'{slug}/{sous_slug}'
-                    if key not in sous_cats:
-                        sous_cats[key] = {
-                            'id': key, 'slug': key,
-                            'nom': sous_nom, 'parent_slug': slug,
-                            'nombre_produits': 0,
-                        }
-                    sous_cats[key]['nombre_produits'] += col.count_documents({
-                        'category': {'$regex': f'^{re.escape(slug)}$', '$options': 'i'},
-                        'category_path': {'$regex': re.escape(sous_nom)},
-                    })
+            pipeline = [
+                {'$match': {
+                    'category': {'$regex': f'^{re.escape(slug)}$', '$options': 'i'},
+                    'subcategory': {'$exists': True, '$ne': None, '$ne': ''},
+                }},
+                {'$group': {
+                    '_id': '$subcategory',
+                    'count': {'$sum': 1},
+                }},
+            ]
+            for doc in col.aggregate(pipeline):
+                sous_slug = doc['_id']
+                count = doc['count']
+                key = f'{slug}/{sous_slug}'
+                if key not in sous_cats:
+                    sous_cats[key] = {
+                        'id': key, 'slug': key,
+                        'nom': sous_slug.replace('-', ' ').title(),
+                        'parent_slug': slug,
+                        'nombre_produits': 0,
+                    }
+                sous_cats[key]['nombre_produits'] += count
         except Exception as e:
             logger.error(f"Erreur sous-cats {slug} / {store_name}: {e}")
 
