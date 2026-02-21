@@ -573,8 +573,40 @@ def categorie_detail(request, slug: str):
     if not produits:
         return Response({'erreur': 'Catégorie introuvable'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Récupérer les sous-catégories (2ème niveau du category_path)
+    sous_cats = {}
+    for get_col, store_name in get_all_stores():
+        try:
+            col = get_col()
+            query = {'category': {'$regex': f'^{re.escape(slug)}$', '$options': 'i'}}
+            paths = col.distinct('category_path', query)
+            for path in paths:
+                parts = [p.strip() for p in path.split('>')] if '>' in path else []
+                if len(parts) >= 2:
+                    sous_nom = parts[1]
+                    sous_slug = slugify_fr(sous_nom)
+                    key = f'{slug}/{sous_slug}'
+                    if key not in sous_cats:
+                        sous_cats[key] = {
+                            'id': key, 'slug': key,
+                            'nom': sous_nom, 'parent_slug': slug,
+                            'nombre_produits': 0,
+                        }
+                    sous_cats[key]['nombre_produits'] += col.count_documents({
+                        'category': {'$regex': f'^{re.escape(slug)}$', '$options': 'i'},
+                        'category_path': {'$regex': re.escape(sous_nom)},
+                    })
+        except Exception as e:
+            logger.error(f"Erreur sous-cats {slug} / {store_name}: {e}")
+
+    sous_list = sorted(sous_cats.values(), key=lambda x: -x['nombre_produits'])
+
     response = paginate(produits, page)
-    response['categorie'] = {'slug': slug, 'nom': categorie_nom}
+    response['categorie'] = {
+        'slug': slug,
+        'nom': categorie_nom,
+        'sous_categories': sous_list,
+    }
     return Response(response)
 
 
