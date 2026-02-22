@@ -257,30 +257,48 @@ def produits_list(request):
             logger.info(f"Recherche texte Atlas Search : {q}")
             pipeline = build_text_search_pipeline(q, num_words, skip=0, limit=fetch_limit)
 
-        for get_col, store_name in stores_to_query:
-            try:
-                col = get_col()
-                results = list(col.aggregate(pipeline, allowDiskUse=True))
-                for doc in results:
-                    doc['_source'] = store_name
-                raw_docs.extend(results)
-                logger.info(f"{store_name} : {len(results)} résultats Atlas Search")
-            except Exception as e:
-                # Fallback regex si l'index Atlas Search "Text" n'est pas disponible
-                logger.warning(f"Atlas Search indisponible pour {store_name}, fallback regex : {e}")
+        def run_pipeline(pipeline):
+            """Exécute un pipeline sur toutes les stores sélectionnées."""
+            docs = []
+            for get_col, store_name in stores_to_query:
                 try:
                     col = get_col()
-                    query_filter = {'title': {'$regex': re.escape(q), '$options': 'i'}}
-                    for doc in col.find(query_filter, PRODUIT_PROJECTION).limit(fetch_limit):
+                    results = list(col.aggregate(pipeline, allowDiskUse=True))
+                    for doc in results:
                         doc['_source'] = store_name
-                        raw_docs.append(doc)
-                except Exception as e2:
-                    logger.error(f"Fallback regex échoué {store_name} : {e2}")
+                    docs.extend(results)
+                    logger.info(f"{store_name} : {len(results)} résultats")
+                except Exception as e:
+                    logger.warning(f"Atlas Search indisponible pour {store_name}, fallback regex : {e}")
+                    try:
+                        col = get_col()
+                        query_filter = {'title': {'$regex': re.escape(q), '$options': 'i'}}
+                        for doc in col.find(query_filter, PRODUIT_PROJECTION).limit(fetch_limit):
+                            doc['_source'] = store_name
+                            docs.append(doc)
+                    except Exception as e2:
+                        logger.error(f"Fallback regex échoué {store_name} : {e2}")
+            return docs
 
-        # Post-filtrage pertinence sur docs bruts (champ `title`)
-        if is_reference and raw_docs:
-            raw_docs, _ = filter_exact_matches(raw_docs)
-        elif num_words >= 2 and raw_docs:
+        raw_docs = run_pipeline(pipeline)
+
+        # Référence : exact match obligatoire, sinon fallback title search
+        if is_reference:
+            if raw_docs:
+                raw_docs, found_exact = filter_exact_matches(raw_docs)
+                if not found_exact:
+                    logger.info(f"Référence '{q}' sans exact match, fallback recherche texte")
+                    is_reference = False
+                    pipeline = build_text_search_pipeline(q, num_words, skip=0, limit=fetch_limit)
+                    raw_docs = run_pipeline(pipeline)
+            else:
+                logger.info(f"Référence '{q}' introuvable, fallback recherche texte")
+                is_reference = False
+                pipeline = build_text_search_pipeline(q, num_words, skip=0, limit=fetch_limit)
+                raw_docs = run_pipeline(pipeline)
+
+        # Post-filtrage pertinence (uniquement pour text search multi-mots)
+        if not is_reference and num_words >= 2 and raw_docs:
             raw_docs = filter_by_relevance(raw_docs, query_words, num_words)
 
     else:
