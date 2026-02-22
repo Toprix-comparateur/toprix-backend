@@ -71,6 +71,12 @@ def get_spacenet():
 def get_comparatif():
     return _pool.get_collection('comparatif')
 
+def get_categories_config():
+    """Retourne la collection categories_config depuis la base Mytek."""
+    client = _pool.get_client('mytek')
+    cfg = settings.MONGODB_CONFIG['mytek']
+    return client[cfg['db']]['categories_config']
+
 def get_all_stores():
     """Retourne [(fonction_collection, nom_store), ...]"""
     return [

@@ -25,7 +25,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 
-from db.mongo import get_comparatif, get_all_stores
+from db.mongo import get_comparatif, get_all_stores, get_categories_config
 from .models import BlogPost, BlogSummary, BlogSpecifications, BlogSection, StoreRequest
 from .helpers.search import (
     clean_search_query,
@@ -517,13 +517,49 @@ def produit_detail(request, slug: str):
 # CATÉGORIES
 # ============================================
 
+# Noms canoniques des catégories (utilisés à la place du category_path brut)
+CATEGORY_NOMS = {
+    'informatique':        'Informatique',
+    'telephonie':          'Téléphonie',
+    'electromenager':      'Électroménager',
+    'gaming':              'Gaming',
+    'tv-et-son':           'TV & Son',
+    'bureau-et-papeterie': 'Bureau & Papeterie',
+    'maison-et-mobilier':  'Maison & Mobilier',
+    'beaute-et-sante':     'Beauté & Santé',
+    'sport-et-loisirs':    'Sport & Loisirs',
+    'surveillance':        'Surveillance',
+    'energie':             'Énergie',
+    'bebe-et-jouets':      'Bébé & Jouets',
+    'photo-et-video':      'Photo & Vidéo',
+}
+
+
+def load_valid_categories():
+    """
+    Charge les slugs valides depuis categories_config (Mytek).
+    Retourne un set de slugs autorisés, ou None en cas d'erreur (pas de filtrage).
+    """
+    try:
+        col = get_categories_config()
+        doc = col.find_one({'_id': 'keyword_map'})
+        if doc and 'data' in doc:
+            return {item[0] for item in doc['data']}
+    except Exception as e:
+        logger.warning(f"Impossible de charger categories_config : {e}")
+    return None
+
+
 @api_view(['GET'])
 def categories_list(request):
     """
     GET /api/v1/categories/
-    Agrège les catégories distinctes depuis les 3 collections per-store.
-    Retourne aussi les sous-catégories (2ème niveau du category_path).
+    Agrège les catégories depuis les 3 stores.
+    Filtre selon categories_config (keyword_map de Mytek) pour exclure les catégories parasites.
+    Noms canoniques via CATEGORY_NOMS.
     """
+    valid_slugs = load_valid_categories()  # set de slugs autorisés, None = pas de filtrage
+
     cats = {}       # {slug: {id, slug, nom, nombre_produits, sous_categories: {}}}
     sous_cats = {}  # {f'{parent}/{sous_slug}': {id, slug, nom, parent_slug, nombre_produits}}
 
@@ -545,15 +581,19 @@ def categories_list(request):
                 if not cat_slug:
                     continue
 
+                # Filtrer les catégories parasites
+                if valid_slugs is not None and cat_slug not in valid_slugs:
+                    continue
+
                 parts = [p.strip() for p in path.split('>')] if '>' in path else []
 
-                # Catégorie parente
+                # Catégorie parente — nom canonique depuis CATEGORY_NOMS
                 if cat_slug not in cats:
-                    parent_nom = parts[0] if parts else cat_slug.replace('-', ' ').title()
+                    nom = CATEGORY_NOMS.get(cat_slug, cat_slug.replace('-', ' ').title())
                     cats[cat_slug] = {
                         'id': cat_slug,
                         'slug': cat_slug,
-                        'nom': parent_nom,
+                        'nom': nom,
                         'nombre_produits': 0,
                     }
                 cats[cat_slug]['nombre_produits'] += count
