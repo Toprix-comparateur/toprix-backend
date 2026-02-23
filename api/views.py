@@ -312,7 +312,12 @@ def produits_list(request):
                 if q:
                     query_filter['title'] = {'$regex': re.escape(q), '$options': 'i'}
                 if categorie:
-                    query_filter['category'] = {'$regex': re.escape(categorie), '$options': 'i'}
+                    if '/' in categorie:
+                        cat_parent, cat_sous = categorie.split('/', 1)
+                        query_filter['category'] = {'$regex': f'^{re.escape(cat_parent)}$', '$options': 'i'}
+                        query_filter['subcategory'] = {'$regex': f'^{re.escape(cat_sous)}$', '$options': 'i'}
+                    else:
+                        query_filter['category'] = {'$regex': re.escape(categorie), '$options': 'i'}
                 if en_promo:
                     query_filter['discount'] = {'$gt': 0}
                 if en_stock:
