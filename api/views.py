@@ -216,7 +216,9 @@ def produits_list(request):
     """
     q = request.GET.get('q', '').strip()
     categorie = request.GET.get('categorie', '').strip()
-    marque = request.GET.get('marque', '').strip()
+    marque_raw = request.GET.get('marque', '').strip()
+    marques = [m.strip() for m in marque_raw.split(',') if m.strip()]
+    marque = marques[0] if len(marques) == 1 else marque_raw  # compat affichage
     prix_min = safe_price(request.GET.get('prix_min', ''))
     prix_max = safe_price(request.GET.get('prix_max', ''))
     en_promo = request.GET.get('en_promo', '').strip() in ('1', 'true')
@@ -225,7 +227,7 @@ def produits_list(request):
     tri = request.GET.get('tri', '').strip()                     # 'prix_asc' | 'prix_desc'
     page = get_page_number(request)
 
-    if not q and not categorie and not marque and prix_min is None and prix_max is None and not en_promo and not boutique and not en_stock:
+    if not q and not categorie and not marques and prix_min is None and prix_max is None and not en_promo and not boutique and not en_stock:
         return Response({'data': [], 'meta': {'page': 1, 'total_pages': 0, 'total_items': 0, 'par_page': PAGE_SIZE}})
 
     # Filtrage des collections selon la boutique demandée
@@ -238,12 +240,12 @@ def produits_list(request):
     # Nettoyage de la requête textuelle
     if q:
         q = clean_search_query(q)
-        if not q and not categorie and not marque and prix_min is None and prix_max is None and not en_promo:
+        if not q and not categorie and not marques and prix_min is None and prix_max is None and not en_promo:
             return Response({'data': [], 'meta': {'page': 1, 'total_pages': 0, 'total_items': 0, 'par_page': PAGE_SIZE}})
 
     raw_docs = []  # docs bruts MongoDB, chacun avec '_source' = store_name
 
-    if q and not categorie and not marque:
+    if q and not categorie and not marques:
         # ── Recherche textuelle pure : Atlas Search ──────────────────────────
         is_reference = is_reference_query(q)
         query_words = q.split()
@@ -311,8 +313,12 @@ def produits_list(request):
                     query_filter['title'] = {'$regex': re.escape(q), '$options': 'i'}
                 if categorie:
                     query_filter['category'] = {'$regex': re.escape(categorie), '$options': 'i'}
-                if marque:
-                    query_filter['brand'] = {'$regex': re.escape(marque), '$options': 'i'}
+                if len(marques) == 1:
+                    query_filter['brand'] = {'$regex': re.escape(marques[0]), '$options': 'i'}
+                elif len(marques) > 1:
+                    query_filter['$or'] = [
+                        {'brand': {'$regex': re.escape(m), '$options': 'i'}} for m in marques
+                    ]
                 if en_promo:
                     query_filter['discount'] = {'$gt': 0}
                 if en_stock:
