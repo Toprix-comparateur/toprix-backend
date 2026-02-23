@@ -313,12 +313,6 @@ def produits_list(request):
                     query_filter['title'] = {'$regex': re.escape(q), '$options': 'i'}
                 if categorie:
                     query_filter['category'] = {'$regex': re.escape(categorie), '$options': 'i'}
-                if len(marques) == 1:
-                    query_filter['brand'] = {'$regex': re.escape(marques[0]), '$options': 'i'}
-                elif len(marques) > 1:
-                    query_filter['$or'] = [
-                        {'brand': {'$regex': re.escape(m), '$options': 'i'}} for m in marques
-                    ]
                 if en_promo:
                     query_filter['discount'] = {'$gt': 0}
                 if en_stock:
@@ -330,13 +324,20 @@ def produits_list(request):
                     if prix_max is not None:
                         price_filter['$lte'] = prix_max
                     query_filter['price'] = price_filter
-                if not query_filter:
+                if not query_filter and not marques:
                     # Sans aucun critère textuel, on évite de charger toute la collection
                     continue
-                fetch_limit = PAGE_SIZE * max(2, len(marques) * 15)
-                for doc in col.find(query_filter, PRODUIT_PROJECTION).limit(fetch_limit):
-                    doc['_source'] = store_name
-                    raw_docs.append(doc)
+                # Multi-marque : une query par marque (équitable, sans sur-fetch)
+                brand_list = marques if len(marques) > 1 else (marques or [None])
+                for brand in brand_list:
+                    brand_filter = dict(query_filter)
+                    if brand:
+                        brand_filter['brand'] = {'$regex': re.escape(brand), '$options': 'i'}
+                    elif not brand_filter:
+                        continue
+                    for doc in col.find(brand_filter, PRODUIT_PROJECTION).limit(PAGE_SIZE * 2):
+                        doc['_source'] = store_name
+                        raw_docs.append(doc)
             except Exception as e:
                 logger.error(f"Erreur filtre {store_name} : {e}")
                 continue
