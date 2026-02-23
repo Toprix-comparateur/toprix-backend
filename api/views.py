@@ -333,7 +333,8 @@ def produits_list(request):
                 if not query_filter:
                     # Sans aucun critère textuel, on évite de charger toute la collection
                     continue
-                for doc in col.find(query_filter, PRODUIT_PROJECTION).limit(PAGE_SIZE * 2):
+                fetch_limit = PAGE_SIZE * max(2, len(marques) * 15)
+                for doc in col.find(query_filter, PRODUIT_PROJECTION).limit(fetch_limit):
                     doc['_source'] = store_name
                     raw_docs.append(doc)
             except Exception as e:
