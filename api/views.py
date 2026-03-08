@@ -315,7 +315,24 @@ def produits_list(request):
                     if '/' in categorie:
                         cat_parent, cat_sous = categorie.split('/', 1)
                         query_filter['category'] = {'$regex': f'^{re.escape(cat_parent)}$', '$options': 'i'}
-                        query_filter['subcategory'] = {'$regex': f'^{re.escape(cat_sous)}$', '$options': 'i'}
+                        # Essayer subcategory d'abord, fallback category_path
+                        sub_test = dict(query_filter)
+                        sub_test['subcategory'] = {'$regex': f'^{re.escape(cat_sous)}$', '$options': 'i'}
+                        if col.count_documents(sub_test, limit=1) > 0:
+                            query_filter['subcategory'] = {'$regex': f'^{re.escape(cat_sous)}$', '$options': 'i'}
+                        else:
+                            # Fallback : chercher via category_path (slugify_fr)
+                            paths = col.distinct('category_path', query_filter)
+                            matching_noms = set()
+                            for path in paths:
+                                parts = [p.strip() for p in path.split('>')]
+                                if len(parts) >= 2 and slugify_fr(parts[1]) == cat_sous:
+                                    matching_noms.add(parts[1])
+                            if matching_noms:
+                                sous_regex = '|'.join(re.escape(n) for n in matching_noms)
+                                query_filter['category_path'] = {'$regex': sous_regex, '$options': 'i'}
+                            else:
+                                query_filter['subcategory'] = {'$regex': f'^{re.escape(cat_sous)}$', '$options': 'i'}
                     else:
                         query_filter['category'] = {'$regex': re.escape(categorie), '$options': 'i'}
                 if en_promo:
