@@ -29,4 +29,7 @@ urlpatterns = [
 
     # Demandes
     path('demandes/', views.demandes_create, name='demandes-create'),
+
+    # Export complet
+    path('export/', views.export_produits, name='export-produits'),
 ]

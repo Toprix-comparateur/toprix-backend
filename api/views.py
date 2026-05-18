@@ -13,6 +13,7 @@ Endpoints :
   GET  /api/v1/blog/<slug>/        → détail article
   GET  /api/v1/boutiques/          → liste boutiques
   POST /api/v1/demandes/           → soumettre une demande
+  GET  /api/v1/export/             → export complet tous les produits (3 stores)
 """
 import logging
 import re
@@ -890,6 +891,117 @@ def blog_detail(request, slug: str):
         return Response({'erreur': 'Article introuvable'}, status=status.HTTP_404_NOT_FOUND)
 
     return Response(BlogPostDetailSerializer(post, context={'request': request}).data)
+
+
+# ============================================
+# EXPORT — Tous les produits des 3 stores
+# ============================================
+
+# Projection complète pour l'export (tous les champs utiles)
+EXPORT_PROJECTION = {
+    '_id': 1,
+    'title': 1,
+    'price': 1,
+    'old_price': 1,
+    'brand': 1,
+    'category': 1,
+    'subcategory': 1,
+    'category_path': 1,
+    'product_image': 1,
+    'reference': 1,
+    'etat_stock': 1,
+    'discount': 1,
+    'url': 1,
+    'fiche_technique': 1,
+    'description': 1,
+    'slug': 1,
+}
+
+EXPORT_PAGE_SIZE = 100
+EXPORT_PAGE_SIZE_MAX = 500
+
+
+@api_view(['GET'])
+def export_produits(request):
+    """
+    GET /api/v1/export/
+    Export complet de tous les produits des 3 stores avec tous les champs.
+
+    Params :
+      - page      : numéro de page (défaut 1)
+      - par_page  : items par store par page (défaut 100, max 500)
+      - boutique  : mytek | tunisianet | spacenet (optionnel — filtre un seul store)
+
+    Fonctionnement :
+      - Retourne jusqu'à par_page produits par store (max par_page * 3 au total).
+      - total_items = somme de tous les produits des 3 stores.
+      - total_pages = basé sur le store ayant le plus de produits.
+      - Itérer page=1..total_pages pour récupérer l'intégralité du catalogue.
+    """
+    page = get_page_number(request)
+    boutique_filter = request.GET.get('boutique', '').strip().lower()
+    try:
+        par_page = min(int(request.GET.get('par_page', EXPORT_PAGE_SIZE)), EXPORT_PAGE_SIZE_MAX)
+        par_page = max(par_page, 1)
+    except (ValueError, TypeError):
+        par_page = EXPORT_PAGE_SIZE
+
+    all_stores = get_all_stores()
+    if boutique_filter in ('mytek', 'tunisianet', 'spacenet'):
+        stores_to_query = [(fn, name) for fn, name in all_stores if name.lower() == boutique_filter]
+    else:
+        stores_to_query = all_stores
+
+    produits = []
+    totaux_par_boutique = {}
+    skip = (page - 1) * par_page
+
+    for get_col, store_name in stores_to_query:
+        try:
+            col = get_col()
+            total_store = col.count_documents({})
+            totaux_par_boutique[store_name] = total_store
+
+            for doc in col.find({}, EXPORT_PROJECTION).skip(skip).limit(par_page):
+                produits.append({
+                    'id':             str(doc['_id']),
+                    'boutique':       store_name,
+                    'nom':            doc.get('title', ''),
+                    'marque':         (doc.get('brand') or '').title(),
+                    'categorie':      doc.get('category', ''),
+                    'sous_categorie': doc.get('subcategory', ''),
+                    'categorie_path': doc.get('category_path', ''),
+                    'prix':           safe_price(doc.get('price')),
+                    'ancien_prix':    safe_price(doc.get('old_price')),
+                    'image':          doc.get('product_image') or doc.get('image', ''),
+                    'en_stock':       doc.get('etat_stock') == 'En stock',
+                    'etat_stock':     doc.get('etat_stock', ''),
+                    'discount':       doc.get('discount', 0),
+                    'reference':      doc.get('reference', ''),
+                    'url':            doc.get('url', ''),
+                    'fiche_technique': doc.get('fiche_technique', ''),
+                    'description':    doc.get('description', ''),
+                    'slug':           doc.get('slug', ''),
+                })
+        except Exception as e:
+            logger.error(f"Erreur export {store_name}: {e}")
+            totaux_par_boutique[store_name] = 0
+            continue
+
+    total_items = sum(totaux_par_boutique.values())
+    max_store = max(totaux_par_boutique.values()) if totaux_par_boutique else 0
+    total_pages = max(1, -(-max_store // par_page)) if max_store > 0 else 1
+
+    return Response({
+        'data': produits,
+        'meta': {
+            'page':           page,
+            'total_pages':    total_pages,
+            'total_items':    total_items,
+            'par_page':       par_page,
+            'par_boutique':   totaux_par_boutique,
+        },
+    })
 
 
 # ============================================
