@@ -565,6 +565,13 @@ CATEGORY_NOMS = {
     'photo-et-video':      'Photo & Vidéo',
 }
 
+# Sous-catégories à masquer (slugs complets parent/sous)
+SOUS_CATEGORIES_BLOQUEES = {
+    'beaute-et-sante/maquillage',
+    'beaute-et-sante/parfum',
+    'beaute-et-sante/soins',
+}
+
 
 def load_valid_categories():
     """
@@ -634,6 +641,8 @@ def categories_list(request):
                     sous_nom = parts[1]
                     sous_slug = slugify_fr(sous_nom)
                     key = f'{cat_slug}/{sous_slug}'
+                    if key in SOUS_CATEGORIES_BLOQUEES:
+                        continue
                     if key not in sous_cats:
                         sous_cats[key] = {
                             'id': key,
