@@ -133,6 +133,11 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@toprix.net')
 
+# Formulaires Contact et Devis du site (voir api/contact.py)
+CONTACT_EMAIL = config('CONTACT_EMAIL', default='contact@toprix.tn')  # destinataire ET expéditeur
+CONTACT_API_KEY = config('CONTACT_API_KEY', default='')  # vide = routes contact/devis fermées
+EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=10, cast=int)  # évite un worker bloqué sur un SMTP muet
+
 # ============================================
 # CACHE LocMem (identique à public_python)
 # ============================================
