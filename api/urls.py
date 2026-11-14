@@ -4,7 +4,7 @@ API/URLS.PY — Routes /api/v1/
 ============================================
 """
 from django.urls import path
-from . import views
+from . import contact, views
 
 urlpatterns = [
     # Produits
@@ -29,6 +29,10 @@ urlpatterns = [
 
     # Demandes
     path('demandes/', views.demandes_create, name='demandes-create'),
+
+    # Formulaires du site (Contact, Devis) : appelés par le Worker, jamais par un navigateur
+    path('contact/', contact.contact_create, name='contact-create'),
+    path('devis/',   contact.devis_create,   name='devis-create'),
 
     # Export complet
     path('export/', views.export_produits, name='export-produits'),
