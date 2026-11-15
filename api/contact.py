@@ -34,6 +34,11 @@ logger = logging.getLogger('api')
 
 MAX_PRODUITS = 50
 
+# Un nom, un sujet ou un produit n'a aucune raison de contenir une adresse web :
+# c'est la signature des robots qui collent leur publicité dans les formulaires.
+LIEN = re.compile(r'https?:|www[.]|://|[.](?:com|net|org|ru|xyz|top|info|biz)(?![a-z0-9])', re.IGNORECASE)
+MAX_LIENS_MESSAGE = 2
+
 
 # ============================================
 # ACCÈS
@@ -88,13 +93,17 @@ class ChampInvalide(Exception):
     """Un champ du formulaire est absent, trop long ou mal formé."""
 
 
-def _lire(donnees, cle, max_len, *, requis=True, multiligne=False):
+def _lire(donnees, cle, max_len, *, requis=True, multiligne=False, sans_lien=True):
     brut = donnees.get(cle, '')
     if brut is None:
         brut = ''
     if not isinstance(brut, str):
         raise ChampInvalide(cle)
     texte = brut.strip()
+    if sans_lien and not multiligne and LIEN.search(texte):
+        raise ChampInvalide(cle)
+    if multiligne and len(re.findall(r'https?://|www[.]', texte, re.IGNORECASE)) > MAX_LIENS_MESSAGE:
+        raise ChampInvalide(cle)
     if not multiligne:
         # Pas de saut de ligne dans un champ qui finit dans un en-tête d'e-mail.
         texte = re.sub(r'\s*[\r\n]+\s*', ' ', texte)
@@ -104,7 +113,8 @@ def _lire(donnees, cle, max_len, *, requis=True, multiligne=False):
 
 
 def _lire_email(donnees):
-    adresse = _lire(donnees, 'email', 254)
+    # Une adresse e-mail contient légitimement un domaine (.com, .net...).
+    adresse = _lire(donnees, 'email', 254, sans_lien=False)
     try:
         validate_email(adresse)
     except ValidationError:
@@ -208,11 +218,12 @@ def devis_create(request):
         '━━━━━━━━━━━━━━━━━━━━━━━━',
         *lignes,
     ]
+    # Pas de copie (cc) au visiteur : l'adresse est saisie librement, c'était un
+    # moyen de faire envoyer du spam à des tiers depuis contact@toprix.tn.
     return _envoyer(EmailMessage(
         subject=f'Demande de devis — {prenom} {nom}' + (f' ({entreprise})' if entreprise else ''),
         body='\n'.join(ligne for ligne in corps if ligne),
         from_email=settings.CONTACT_EMAIL,
         to=[settings.CONTACT_EMAIL],
-        cc=[email],
         reply_to=[email],
     ), 'devis')
